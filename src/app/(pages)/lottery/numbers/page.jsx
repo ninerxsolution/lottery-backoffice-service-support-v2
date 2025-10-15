@@ -69,7 +69,7 @@ export default function LotteryNumbersPage() {
 
                 <details className="mt-8">
                     <summary className="cursor-pointer text-sm text-gray-700">View Raw Data</summary>
-                    <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-auto">{JSON.stringify(numbers, null, 2)}</pre>
+                    <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-auto text-black">{JSON.stringify(numbers, null, 2)}</pre>
                 </details>
             </div>
         </div>

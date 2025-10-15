@@ -239,7 +239,7 @@ export default function LotteryTemplatePage() {
                                             onKeyDown={(e) => handleCellCommitKey(e, rowIndex, colIndex)}
                                             placeholder="00"
                                             maxLength={2}
-                                            className={`w-12 h-12 text-center text-lg font-semibold bg-white border-2 rounded-lg focus:outline-none transition-colors duration-200 ${/^(\d{2})$/.test(value) ? 'border-gray-300 focus:border-blue-500' : 'border-red-400 focus:border-red-500'}`}
+                                            className={`w-12 h-12 text-center text-lg font-semibold text-black bg-white border-2 rounded-lg focus:outline-none transition-colors duration-200 ${/^(\d{2})$/.test(value) ? 'border-gray-300 focus:border-blue-500' : 'border-red-400 focus:border-red-500'}`}
                                             style={{
                                                 gridRow: rowIndex + 1,
                                                 gridColumn: colIndex + 1
@@ -272,7 +272,7 @@ export default function LotteryTemplatePage() {
                             View Raw JSON Data
                         </summary>
                         <div className="mt-2 bg-gray-100 rounded p-4">
-                            <pre className="text-xs text-gray-800 overflow-auto">
+                            <pre className="text-xs text-black overflow-auto">
                                 {JSON.stringify(templateData, null, 2)}
                             </pre>
                         </div>

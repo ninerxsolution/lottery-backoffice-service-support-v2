@@ -1,5 +1,106 @@
 import { createConnection } from '@/lib/database';
 
+// Ensure required tables exist for each supported DB
+async function ensureSchema(connectionString, connection) {
+  if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
+    const client = await connection.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lottery_templates (
+          id SERIAL PRIMARY KEY,
+          columns JSONB NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lottery_matched_sets (
+          id SERIAL PRIMARY KEY,
+          template_id INTEGER NOT NULL,
+          vertical_row_index INTEGER NOT NULL,
+          is_complete BOOLEAN NOT NULL DEFAULT FALSE,
+          matched_numbers JSONB NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lottery_matched_numbers (
+          id SERIAL PRIMARY KEY,
+          matched_set_id INTEGER NOT NULL,
+          lottery_number VARCHAR(32) NOT NULL,
+          last_two_digits VARCHAR(2) NOT NULL,
+          position_in_row INTEGER NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+    } finally {
+      client.release();
+    }
+  } else if (connectionString.startsWith('mysql://')) {
+    // MySQL 5.7+ supports JSON; fallback to TEXT if needed
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS lottery_templates (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        columns JSON NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS lottery_matched_sets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        template_id INT NOT NULL,
+        vertical_row_index INT NOT NULL,
+        is_complete TINYINT(1) NOT NULL DEFAULT 0,
+        matched_numbers JSON NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS lottery_matched_numbers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        matched_set_id INT NOT NULL,
+        lottery_number VARCHAR(32) NOT NULL,
+        last_two_digits CHAR(2) NOT NULL,
+        position_in_row INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } else if (connectionString.startsWith('sqlite://')) {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS lottery_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        columns TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS lottery_matched_sets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER NOT NULL,
+        vertical_row_index INTEGER NOT NULL,
+        is_complete INTEGER NOT NULL DEFAULT 0,
+        matched_numbers TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS lottery_matched_numbers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matched_set_id INTEGER NOT NULL,
+        lottery_number TEXT NOT NULL,
+        last_two_digits TEXT NOT NULL,
+        position_in_row INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+  }
+}
+
 /**
  * GET /api/lottery/matching
  * Fetch all matched lottery sets with completion status
@@ -16,6 +117,7 @@ export async function GET(request) {
     }
 
     const connection = createConnection(connectionString);
+    await ensureSchema(connectionString, connection);
     const { searchParams } = new URL(request.url);
     const templateId = searchParams.get('template_id');
     const isComplete = searchParams.get('is_complete');
@@ -138,6 +240,7 @@ export async function POST(request) {
     }
 
     const connection = createConnection(connectionString);
+    await ensureSchema(connectionString, connection);
 
     let templateResult;
     
@@ -261,6 +364,7 @@ export async function DELETE() {
     }
 
     const connection = createConnection(connectionString);
+    await ensureSchema(connectionString, connection);
 
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
@@ -342,7 +446,7 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
   const calculateColumnPotential = (colIndex) => {
     let potential = 0;
     for (let rowIndex = 0; rowIndex < 10; rowIndex++) {
-      const lastTwo = template[rowIndex][colIndex];
+      const lastTwo = template[colIndex][rowIndex];
       if (countAvailable(lastTwo) > 0) potential++;
     }
     return potential;
@@ -373,7 +477,7 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
     let filledPositions = 0;
 
     for (let rowIndex = 0; rowIndex < 10; rowIndex++) {
-      const templateValue = template[rowIndex][bestCol];
+      const templateValue = template[bestCol][rowIndex];
       const picked = takeNumberFor(templateValue);
       if (picked) filledPositions++;
       matchedPositions.push({
