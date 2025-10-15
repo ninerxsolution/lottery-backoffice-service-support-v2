@@ -10,6 +10,7 @@ This document tracks the site structure and navigation for the Lottery Backoffic
 - `/lottery/template` - Lottery template display page
 - `/lottery/numbers` - Display all six_digit_number values
 - `/lottery/matching_gen` - Lottery number matching page
+- `/lottery-image-gen-test` - Generate lottery card image from 6 digits
 
 ### API Routes
 - `/api/database/test` - Database connection testing endpoint
@@ -39,12 +40,16 @@ Lottery Backoffice Service Support v2
 ├── Lottery Numbers (/lottery/numbers)
 │   ├── List six_digit_number values
 │   └── Raw data view
-└── Lottery Matching (/lottery/matching_gen)
-    ├── Process Matching Button
-    ├── Statistics Dashboard
-    ├── Template Preview
-    ├── Filter Controls
-    └── Matching Results Display
+├── Lottery Matching (/lottery/matching_gen)
+│   ├── Process Matching Button
+│   ├── Statistics Dashboard
+│   ├── Template Preview
+│   ├── Filter Controls
+│   └── Matching Results Display
+└── Lottery Image Generator (/lottery-image-gen-test)
+    ├── 6-digit input field
+    ├── Canvas preview over template
+    └── Download PNG action
 ```
 
 ## Page Descriptions
@@ -96,6 +101,15 @@ Lottery Backoffice Service Support v2
   - Flags incomplete rows when not all 10 positions are filled
   - Stores results in lottery_matched_sets and lottery_matched_numbers tables
 - **Status**: Fully implemented with database integration
+
+### Lottery Image Generator Page (`/lottery-image-gen-test`)
+- **Purpose**: Generate a lottery card image by rendering a 6-digit number onto a template
+- **Features**:
+  - 6-digit numeric input with validation
+  - Live canvas preview drawn over `/assets/images/lottery-card-template.jpg`
+  - Centered digits with consistent spacing and responsive font sizing
+  - Download final image as PNG (`lottery-<digits>.png`)
+- **Status**: Implemented (client-side rendering)
 
 ## API Endpoints
 
@@ -155,6 +169,7 @@ Lottery Backoffice Service Support v2
 - **2024-10-14**: Implemented real database integration for lottery template data
 - **2024-10-14**: Added lottery matching system with vertical row completion logic
 - **2024-10-14**: Created matching API endpoints and UI with completion flags
+-. **2025-10-15**: Added lottery image generator page and documented route
 
 ## Notes
 
