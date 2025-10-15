@@ -15,6 +15,30 @@ export default function LotteryMatchingPage() {
         verticalRow: null
     });
     const [unusedNumbers, setUnusedNumbers] = useState([]);
+    
+    const computeUnusedNumbers = (allNumbers, sets) => {
+        if (!Array.isArray(allNumbers) || !Array.isArray(sets)) return [];
+        try {
+            const matchedSet = new Set();
+            for (const set of sets) {
+                const matchedNumbersData = typeof set?.matched_numbers === 'string'
+                    ? JSON.parse(set.matched_numbers)
+                    : set?.matched_numbers;
+                const positions = matchedNumbersData?.positions || [];
+                for (const position of positions) {
+                    if (position?.is_filled && Array.isArray(position.matched_numbers)) {
+                        for (const num of position.matched_numbers) {
+                            matchedSet.add(num);
+                        }
+                    }
+                }
+            }
+            return allNumbers.filter((n) => !matchedSet.has(n));
+        } catch (e) {
+            console.error('Failed to compute unused numbers:', e);
+            return [];
+        }
+    };
 
     useEffect(() => {
         loadInitialData();
@@ -74,7 +98,16 @@ export default function LotteryMatchingPage() {
                 throw new Error(result.message || 'Failed to fetch matched sets');
             }
 
-            setMatchedSets(result.data || []);
+            const data = result.data || [];
+            setMatchedSets(data);
+
+            // Fallback compute of unused numbers if API didn't provide them
+            if (!unusedNumbers?.length) {
+                const computed = computeUnusedNumbers(lotteryNumbers, data);
+                if (computed.length) {
+                    setUnusedNumbers(computed);
+                }
+            }
 
         } catch (err) {
             console.error('Error loading matched sets:', err);
@@ -252,7 +285,7 @@ export default function LotteryMatchingPage() {
                     </div>
 
                     {/* Statistics */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-blue-900">{lotteryNumbers.length}</div>
                             <div className="text-blue-700">Total Lottery Numbers</div>
@@ -268,6 +301,10 @@ export default function LotteryMatchingPage() {
                                 {matchedSets.filter(set => !set.is_complete).length}
                             </div>
                             <div className="text-yellow-700">Incomplete Rows</div>
+                        </div>
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
+                            <div className="text-2xl font-bold text-orange-900">{unusedNumbers.length}</div>
+                            <div className="text-orange-700">Unused Numbers</div>
                         </div>
                     </div>
 
@@ -331,26 +368,32 @@ export default function LotteryMatchingPage() {
                 )}
 
                 {/* Unused Numbers Display */}
-                {unusedNumbers.length > 0 && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 mb-8">
-                        <h3 className="text-lg font-semibold text-orange-900 mb-4">
-                            Unused Numbers ({unusedNumbers.length} numbers remaining)
-                        </h3>
-                        <p className="text-sm text-orange-700 mb-3">
-                            These lottery numbers were not used in the matching process:
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 mb-8">
+                    <h3 className="text-lg font-semibold text-orange-900 mb-4">
+                        Unused Numbers ({unusedNumbers.length} numbers remaining)
+                    </h3>
+                    {unusedNumbers.length === 0 ? (
+                        <p className="text-sm text-orange-700">
+                            All numbers were used in the matching process.
                         </p>
-                        <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto">
-                            {unusedNumbers.map((number, index) => (
-                                <span 
-                                    key={index}
-                                    className="bg-orange-100 text-orange-800 text-sm px-3 py-1 rounded border border-orange-300"
-                                >
-                                    {number}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                    ) : (
+                        <>
+                            <p className="text-sm text-orange-700 mb-3">
+                                These lottery numbers were not used in the matching process:
+                            </p>
+                            <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto">
+                                {unusedNumbers.map((number, index) => (
+                                    <span 
+                                        key={index}
+                                        className="bg-orange-100 text-orange-800 text-sm px-3 py-1 rounded border border-orange-300"
+                                    >
+                                        {number}
+                                    </span>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
 
                 {/* Matched Sets Results */}
                 <div className="bg-white shadow-lg rounded-lg p-8">
