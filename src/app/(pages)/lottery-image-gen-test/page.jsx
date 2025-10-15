@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 export default function LotteryImageGenTestPage() {
     const [digits, setDigits] = useState("");
     const [error, setError] = useState("");
+    const [layoutMode, setLayoutMode] = useState("single"); // "single" | "stack10"
+    const [stackDigits, setStackDigits] = useState(Array.from({ length: 10 }, () => ""));
     const canvasRef = useRef(null);
     const imgRef = useRef(null);
 
@@ -27,7 +29,10 @@ export default function LotteryImageGenTestPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [templateSrc]);
 
-    const isValid = useMemo(() => /^[0-9]{6}$/.test(digits), [digits]);
+    const isSix = (val) => /^[0-9]{6}$/.test(val);
+    const isValidSingle = useMemo(() => isSix(digits), [digits]);
+    const isValidStack = useMemo(() => stackDigits.every((v) => isSix(v)), [stackDigits]);
+    const isValid = layoutMode === "stack10" ? isValidStack : isValidSingle;
 
     const renderCanvas = useCallback(
         (value) => {
@@ -35,59 +40,86 @@ export default function LotteryImageGenTestPage() {
             const img = imgRef.current;
             if (!canvas || !img) return;
 
-            // Define canvas size based on template
-            const width = img.width || 1000;
-            const height = img.height || 600;
-            canvas.width = width;
-            canvas.height = height;
+            // Base template size
+            const baseWidth = img.width || 1000;
+            const baseHeight = img.height || 600;
+
+            // Layout sizing
+            const isStack = layoutMode === "stack10";
+            const values = isStack ? stackDigits : [value];
+            const count = values.length;
+            const offsetY = Math.floor(baseHeight * 0.315); // vertical overlap step
+            const canvasWidth = baseWidth;
+            const canvasHeight = isStack ? baseHeight + (count - 1) * offsetY : baseHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
 
             const ctx = canvas.getContext("2d");
             if (!ctx) return;
 
-            // Draw template background
-            ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
+            // Clear
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // Draw cards (single or stacked)
+            for (let i = 0; i < count; i += 1) {
+                const yOffset = isStack ? i * offsetY : 0;
+                ctx.drawImage(img, 0, yOffset, baseWidth, baseHeight);
+            }
 
             // If valid, draw digits
-            if (/^[0-9]{6}$/.test(value)) {
-                // Text style config — tweak to match the template design
-                const fontSize = Math.floor(width * 0.08); // 8% of width
-                ctx.font = `bold ${fontSize}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial`;
-                ctx.fillStyle = "#111111";
-                ctx.textBaseline = "middle";
-                ctx.backgroundColor = "#ffffff";
+            // Text style config — tweak to match the template design
+            const fontSize = Math.floor(baseWidth * 0.08); // 8% of width
+            ctx.font = `bold ${fontSize}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial`;
+            ctx.fillStyle = "#111111";
+            ctx.textBaseline = "middle";
+            ctx.backgroundColor = "#ffffff";
 
-                // Positioning: center horizontally near lower-third
-                const y = Math.floor(height * 0.165);
+            // Positioning within a single card
+            const yWithinCard = Math.floor(baseHeight * 0.165);
+            const digitSpacing = Math.floor(fontSize * 0.3);
 
-                // Measure total width by placing digits with letter spacing
-                const digitSpacing = Math.floor(fontSize * 0.3);
-                const measures = value.split("").map((d) => ctx.measureText(d).width);
+            for (let cardIndex = 0; cardIndex < count; cardIndex += 1) {
+                const val = values[cardIndex] || "";
+                if (!/^[0-9]{6}$/.test(val)) continue;
+                const measures = val.split("").map((d) => ctx.measureText(d).width);
                 const totalDigitsWidth = measures.reduce((a, b) => a + b, 0);
-                const totalSpacing = digitSpacing * (value.length - 1);
+                const totalSpacing = digitSpacing * (val.length - 1);
                 const totalWidth = totalDigitsWidth + totalSpacing;
-                let x = Math.floor((width - totalWidth) / 1.27);
-
-                for (let i = 0; i < value.length; i += 1) {
-                    const d = value[i];
-                    ctx.fillText(d, x, y);
+                const xStart = Math.floor((baseWidth - totalWidth) / 1.27);
+                let x = xStart;
+                const cardYOffset = isStack ? cardIndex * offsetY : 0;
+                for (let i = 0; i < val.length; i += 1) {
+                    const d = val[i];
+                    ctx.fillText(d, x, yWithinCard + cardYOffset);
                     x += measures[i] + digitSpacing;
                 }
             }
         },
-        []
+        [layoutMode, stackDigits]
     );
 
-    // Re-render on digits change
+    // Re-render on input change
     useEffect(() => {
         renderCanvas(digits);
-    }, [digits, renderCanvas]);
+    }, [digits, stackDigits, layoutMode, renderCanvas]);
 
     const onChange = (e) => {
         const raw = e.target.value;
         const next = raw.replace(/\D/g, "").slice(0, 6);
         setDigits(next);
         if (next.length !== 6) setError("Please enter exactly 6 digits.");
+        else setError("");
+    };
+
+    const onChangeStack = (index) => (e) => {
+        const raw = e.target.value;
+        const next = raw.replace(/\D/g, "").slice(0, 6);
+        setStackDigits((prev) => {
+            const copy = prev.slice();
+            copy[index] = next;
+            return copy;
+        });
+        if (next.length !== 6) setError("Each card requires exactly 6 digits.");
         else setError("");
     };
 
@@ -99,7 +131,9 @@ export default function LotteryImageGenTestPage() {
             return;
         }
         const link = document.createElement("a");
-        link.download = `lottery-${digits}-v2.jpeg`;
+        const modeSuffix = layoutMode === "stack10" ? "stack10" : "single";
+        const namePart = layoutMode === "stack10" ? stackDigits.join("-") : digits;
+        link.download = `lottery-${namePart}-v2-${modeSuffix}.png`;
         link.href = canvas.toDataURL("image/png");
         link.click();
     };
@@ -116,23 +150,49 @@ export default function LotteryImageGenTestPage() {
                                 <label htmlFor="digits-input" style={{ fontWeight: 600 }}>
                                     6-digit number
                                 </label>
-                                <input
-                                    id="digits-input"
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    value={digits}
-                                    onChange={onChange}
-                                    placeholder="e.g., 123456"
-                                    style={{
-                                        padding: "10px 12px",
-                                        border: "1px solid #ccc",
-                                        borderRadius: 8,
-                                        fontSize: 16,
-                                        width: "100%",
-                                    }}
-                                    aria-invalid={!isValid}
-                                    aria-describedby="digits-help"
-                                />
+                                {layoutMode === "single" ? (
+                                    <input
+                                        id="digits-input"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        value={digits}
+                                        onChange={onChange}
+                                        placeholder="e.g., 123456"
+                                        style={{
+                                            padding: "10px 12px",
+                                            border: "1px solid #ccc",
+                                            borderRadius: 8,
+                                            fontSize: 16,
+                                            width: "100%",
+                                        }}
+                                        aria-invalid={!isValid}
+                                        aria-describedby="digits-help"
+                                    />
+                                ) : (
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                                        {stackDigits.map((v, i) => (
+                                            <div key={i} style={{ display: "grid", gap: 4 }}>
+                                                <label htmlFor={`digits-${i}`} style={{ fontSize: 12, color: "#555" }}>Card {i + 1}</label>
+                                                <input
+                                                    id={`digits-${i}`}
+                                                    inputMode="numeric"
+                                                    pattern="[0-9]*"
+                                                    value={v}
+                                                    onChange={onChangeStack(i)}
+                                                    placeholder="000000"
+                                                    style={{
+                                                        padding: "10px 12px",
+                                                        border: "1px solid #ccc",
+                                                        borderRadius: 8,
+                                                        fontSize: 16,
+                                                        width: "100%",
+                                                    }}
+                                                    aria-invalid={!isSix(v)}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 <small id="digits-help" style={{ color: !isValid ? "#b00020" : "#666" }}>
                                     Enter exactly 6 digits. Only numbers are accepted.
                                 </small>
@@ -141,6 +201,28 @@ export default function LotteryImageGenTestPage() {
                                         {error}
                                     </div>
                                 ) : null}
+                                <div role="group" aria-label="Layout" style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
+                                    <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                                        <input
+                                            type="radio"
+                                            name="layoutMode"
+                                            value="single"
+                                            checked={layoutMode === "single"}
+                                            onChange={() => setLayoutMode("single")}
+                                        />
+                                        <span>1 image: 1 card</span>
+                                    </label>
+                                    <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                                        <input
+                                            type="radio"
+                                            name="layoutMode"
+                                            value="stack10"
+                                            checked={layoutMode === "stack10"}
+                                            onChange={() => setLayoutMode("stack10")}
+                                        />
+                                        <span>1 image: 10 cards (stack)</span>
+                                    </label>
+                                </div>
                                 <div style={{ display: "flex", gap: 8 }}>
                                     <button
                                         type="button"
