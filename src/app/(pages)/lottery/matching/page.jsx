@@ -15,7 +15,7 @@ export default function LotteryMatchingPage() {
         verticalRow: null
     });
     const [unusedNumbers, setUnusedNumbers] = useState([]);
-    
+
     const computeUnusedNumbers = (allNumbers, sets) => {
         if (!Array.isArray(allNumbers) || !Array.isArray(sets)) return [];
         try {
@@ -140,7 +140,7 @@ export default function LotteryMatchingPage() {
             if (result?.data?.unused_numbers) {
                 setUnusedNumbers(result.data.unused_numbers);
             }
-            
+
             await loadMatchedSets();
 
         } catch (err) {
@@ -162,22 +162,22 @@ export default function LotteryMatchingPage() {
         try {
             setError(null);
             setFilters({ isComplete: null, verticalRow: null });
-            
+
             // Clear database
             const response = await fetch('/api/lottery/matching', {
                 method: 'DELETE'
             });
-            
+
             const result = await response.json();
-            
+
             if (!response.ok) {
                 throw new Error(result.message || 'Failed to clear database');
             }
-            
+
             // Clear UI state
             setMatchedSets([]);
             setUnusedNumbers([]);
-            
+
         } catch (err) {
             setError(err.message || 'Failed to reset data');
             console.error('Error resetting data:', err);
@@ -338,34 +338,34 @@ export default function LotteryMatchingPage() {
                     const grid = Array.isArray(templateData?.columns)
                         ? templateData.columns
                         : Array.isArray(templateData)
-                        ? templateData
-                        : null;
+                            ? templateData
+                            : null;
                     return grid;
                 })() && (
-                    <div className="bg-white shadow-lg rounded-lg p-8 mb-8">
-                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Template Preview</h2>
-                        <div className="flex justify-center">
-                            <div className="grid grid-cols-10 gap-1 p-4 bg-gray-100 rounded-lg">
-                                {(() => {
-                                    const grid = Array.isArray(templateData?.columns) ? templateData.columns : templateData;
-                                    return Array.from({ length: 10 }, (_, rowIndex) => (
-                                        Array.from({ length: 10 }, (_, colIndex) => (
-                                            <div
-                                                key={`${rowIndex}-${colIndex}`}
-                                                className="w-8 h-8 text-center text-sm font-semibold bg-white border border-gray-300 rounded flex items-center justify-center"
-                                            >
-                                                {grid[colIndex][rowIndex]}
-                                            </div>
-                                        ))
-                                    ));
-                                })()}
+                        <div className="bg-white shadow-lg rounded-lg p-8 mb-8">
+                            <h2 className="text-xl font-semibold text-gray-900 mb-4">Template Preview</h2>
+                            <div className="flex justify-center">
+                                <div className="grid grid-cols-10 gap-1 p-4 bg-gray-100 rounded-lg">
+                                    {(() => {
+                                        const grid = Array.isArray(templateData?.columns) ? templateData.columns : templateData;
+                                        return Array.from({ length: 10 }, (_, rowIndex) => (
+                                            Array.from({ length: 10 }, (_, colIndex) => (
+                                                <div
+                                                    key={`${rowIndex}-${colIndex}`}
+                                                    className="w-8 h-8 text-center text-sm font-semibold bg-white border border-gray-300 rounded flex items-center justify-center"
+                                                >
+                                                    {grid[colIndex][rowIndex]}
+                                                </div>
+                                            ))
+                                        ));
+                                    })()}
+                                </div>
                             </div>
+                            <p className="text-sm text-gray-600 mt-4 text-center">
+                                Each column represents a vertical row for matching
+                            </p>
                         </div>
-                        <p className="text-sm text-gray-600 mt-4 text-center">
-                            Each column represents a vertical row for matching
-                        </p>
-                    </div>
-                )}
+                    )}
 
                 {/* Unused Numbers Display */}
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 mb-8">
@@ -383,7 +383,7 @@ export default function LotteryMatchingPage() {
                             </p>
                             <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto">
                                 {unusedNumbers.map((number, index) => (
-                                    <span 
+                                    <span
                                         key={index}
                                         className="bg-orange-100 text-orange-800 text-sm px-3 py-1 rounded border border-orange-300"
                                     >
@@ -398,17 +398,16 @@ export default function LotteryMatchingPage() {
                 {/* Matched Sets Results */}
                 <div className="bg-white shadow-lg rounded-lg p-8">
                     <h2 className="text-xl font-semibold text-gray-900 mb-6">Matching Results</h2>
-
-                    {matchedSets.length === 0 ? (
-                        <div className="text-center py-8">
-                            <p className="text-gray-600">No matched sets found. Click "Process Matching" to generate results.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {matchedSets.map((set) => {
+                    <div className="grid grid-cols-2 gap-4">
+                        {matchedSets.length === 0 ? (
+                            <div className="col-span-2 text-center py-8">
+                                <p className="text-gray-600">No matched sets found. Click "Process Matching" to generate results.</p>
+                            </div>
+                        ) : (
+                            matchedSets.map((set) => {
                                 const completionPercentage = Math.round((set.matched_count / 10) * 100);
-                                const matchedNumbersData = typeof set.matched_numbers === 'string' 
-                                    ? JSON.parse(set.matched_numbers) 
+                                const matchedNumbersData = typeof set.matched_numbers === 'string'
+                                    ? JSON.parse(set.matched_numbers)
                                     : set.matched_numbers;
 
                                 return (
@@ -429,7 +428,7 @@ export default function LotteryMatchingPage() {
 
                                         <div className="mb-4">
                                             <div className="w-full bg-gray-200 rounded-full h-2">
-                                                <div 
+                                                <div
                                                     className={`h-2 rounded-full ${getCompletionColor(completionPercentage)}`}
                                                     style={{ width: `${completionPercentage}%` }}
                                                 ></div>
@@ -462,10 +461,10 @@ export default function LotteryMatchingPage() {
                                                     </div>
                                                 </div>
                                             )) || (
-                                                <div className="col-span-5 text-center text-gray-500 py-4">
-                                                    No position data available
-                                                </div>
-                                            )}
+                                                    <div className="col-span-5 text-center text-gray-500 py-4">
+                                                        No position data available
+                                                    </div>
+                                                )}
                                         </div>
 
                                         {/* Matched Numbers List */}
@@ -475,9 +474,9 @@ export default function LotteryMatchingPage() {
                                                 <div className="flex flex-wrap gap-2">
                                                     {matchedNumbersData.positions
                                                         .filter(pos => pos.is_filled)
-                                                        .map((position, posIndex) => 
+                                                        .map((position, posIndex) =>
                                                             position.matched_numbers.map((number, numIndex) => (
-                                                                <span 
+                                                                <span
                                                                     key={`${posIndex}-${numIndex}`}
                                                                     className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded"
                                                                 >
@@ -491,9 +490,9 @@ export default function LotteryMatchingPage() {
                                         )}
                                     </div>
                                 );
-                            })}
-                        </div>
-                    )}
+                            })
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

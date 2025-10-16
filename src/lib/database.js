@@ -56,6 +56,12 @@ export function createConnection(connectionString) {
       const db = new sqlite3.Database(filePath);
       return {
         query: promisify(db.all.bind(db)),
+        run: (sql, params = []) => new Promise((resolve, reject) => {
+          db.run(sql, params, function (err) {
+            if (err) return reject(err);
+            resolve({ lastID: this.lastID, changes: this.changes });
+          });
+        }),
         close: promisify(db.close.bind(db))
       };
     
