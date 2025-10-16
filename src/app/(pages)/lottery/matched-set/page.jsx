@@ -253,6 +253,9 @@ export default function LotteryMatchedSetsPage() {
                             Matched Sets
                         </h1>
                         <p className="text-gray-600">All computed vertical rows from the matching process</p>
+                        <div className="mt-3 text-sm text-gray-700">
+                            Count: <span className="font-mono font-semibold">{matchedSets.length}</span>
+                        </div>
                     </div>
 
                     <div className="flex flex-wrap gap-4 justify-center">

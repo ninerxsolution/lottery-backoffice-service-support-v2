@@ -9,7 +9,8 @@ This document tracks the site structure and navigation for the Lottery Backoffic
 - `/database-test` - Database connection testing page
 - `/lottery/template` - Lottery template display page
 - `/lottery/numbers` - Display all six_digit_number values
-- `/lottery/matching_gen` - Lottery number matching page
+- `/lottery/matching` - Lottery number matching page
+- `/lottery/matched-set` - Matched set results and views
 - `/lottery-image-gen-test` - Generate lottery card image from 6 digits
 
 ### API Routes
@@ -40,12 +41,15 @@ Lottery Backoffice Service Support v2
 ├── Lottery Numbers (/lottery/numbers)
 │   ├── List six_digit_number values
 │   └── Raw data view
-├── Lottery Matching (/lottery/matching_gen)
+├── Lottery Matching (/lottery/matching)
 │   ├── Process Matching Button
 │   ├── Statistics Dashboard
 │   ├── Template Preview
 │   ├── Filter Controls
 │   └── Matching Results Display
+├── Lottery Matched Set (/lottery/matched-set)
+│   ├── View matched sets
+│   └── Inspect details
 └── Lottery Image Generator (/lottery-image-gen-test)
     ├── 6-digit input field
     ├── Canvas preview over template
@@ -82,7 +86,7 @@ Lottery Backoffice Service Support v2
   - Responsive design with Tailwind CSS
 - **Status**: Implemented with real database integration
 
-### Lottery Matching Page (`/lottery/matching_gen`)
+### Lottery Matching Page (`/lottery/matching`)
 - **Purpose**: Match lottery numbers against template vertical rows with completion tracking
 - **Features**:
   - Process matching button to analyze lottery numbers against templates
@@ -101,6 +105,14 @@ Lottery Backoffice Service Support v2
   - Flags incomplete rows when not all 10 positions are filled
   - Stores results in lottery_matched_sets and lottery_matched_numbers tables
 - **Status**: Fully implemented with database integration
+
+### Lottery Matched Set Page (`/lottery/matched-set`)
+- **Purpose**: Browse and inspect matched sets created by the matching process
+- **Features**:
+  - Paginated list of matched sets
+  - Detail view per set
+  - Filtering options
+- **Status**: Implemented
 
 ### Lottery Image Generator Page (`/lottery-image-gen-test`)
 - **Purpose**: Generate a lottery card image by rendering a 6-digit number onto a template
@@ -169,7 +181,8 @@ Lottery Backoffice Service Support v2
 - **2024-10-14**: Implemented real database integration for lottery template data
 - **2024-10-14**: Added lottery matching system with vertical row completion logic
 - **2024-10-14**: Created matching API endpoints and UI with completion flags
--. **2025-10-15**: Added lottery image generator page and documented route
+- **2025-10-15**: Added lottery image generator page and documented route
+- **2025-10-16**: Reconciled routes; updated matching path; added matched-set page
 
 ## Notes
 

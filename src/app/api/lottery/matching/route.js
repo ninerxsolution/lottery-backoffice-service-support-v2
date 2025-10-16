@@ -452,26 +452,29 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
     return potential;
   };
 
-  // Process columns dynamically - recalculate best column each iteration
-  const processedColumns = new Set();
-  
-  for (let iteration = 0; iteration < 10; iteration++) {
-    // Find best column among unprocessed
+  // Process columns dynamically - allow multiple sets per column
+  // Keep generating sets while there is at least one column with potential > 0
+  // Safety cap to avoid infinite loops in unexpected cases
+  let safetyCounter = 0;
+  const maxIterations = Math.max(10, lotteryNumbers.length * 2);
+  while (safetyCounter < maxIterations) {
+    safetyCounter++;
+
+    // Find best column (highest potential) in current state
     let bestCol = -1;
     let bestPotential = -1;
-    
+
     for (let colIndex = 0; colIndex < 10; colIndex++) {
-      if (processedColumns.has(colIndex)) continue;
       const potential = calculateColumnPotential(colIndex);
       if (potential > bestPotential) {
         bestPotential = potential;
         bestCol = colIndex;
       }
     }
-    
-    if (bestCol === -1) break; // No more columns
-    processedColumns.add(bestCol);
-    
+
+    // Stop if no column can be filled further
+    if (bestCol === -1 || bestPotential <= 0) break;
+
     // Process this column
     const matchedPositions = [];
     let filledPositions = 0;
