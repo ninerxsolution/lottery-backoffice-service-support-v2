@@ -15,32 +15,15 @@ export async function GET() {
 
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
-      const result = await client.query('SELECT six_digit_number FROM lottery_numbers ORDER BY six_digit_number');
+      const result = await client.query('SELECT year_number, draw_sequence, set_number, six_digit_number, book_number FROM lottery_numbers ORDER BY six_digit_number');
       client.release();
       await connection.end();
 
       return Response.json({
         success: true,
-        data: result.rows.map(r => r.six_digit_number)
+        data: result.rows.map(r => ({ year_number: r.year_number, draw_sequence: r.draw_sequence, set_number: r.set_number, six_digit_number: r.six_digit_number, book_number: r.book_number }))
       });
 
-    } else if (connectionString.startsWith('mysql://')) {
-      const [rows] = await connection.execute('SELECT six_digit_number FROM lottery_numbers ORDER BY six_digit_number');
-      await connection.end();
-
-      return Response.json({
-        success: true,
-        data: rows.map(r => r.six_digit_number)
-      });
-
-    } else if (connectionString.startsWith('sqlite://')) {
-      const rows = await connection.query('SELECT six_digit_number FROM lottery_numbers ORDER BY six_digit_number');
-      await connection.close();
-
-      return Response.json({
-        success: true,
-        data: rows.map(r => r.six_digit_number)
-      });
     }
 
     return Response.json({
@@ -102,10 +85,10 @@ export async function POST(request) {
     const yy = parseInt(yyStr, 10);
     // Convert to Buddhist Era: use 2500 + YY (e.g., '67' -> 2567)
     const year_number = 2500 + yy;
-    const draw_sequence = parseInt(drawSeqStr, 10);
+    const draw_sequence = drawSeqStr; // Keep as string
     const set_number = setNumStr; // Keep as string to preserve leading zeros like '09'
-    const six_digit_number = parseInt(sixStr, 10);
-    const book_number = parseInt(bookStr, 10);
+    const six_digit_number = sixStr; // Keep as string
+    const book_number = bookStr; // Keep as string
     const lottery_draw_id = 0;
     const branch_id = 0;
     const ticket_count = 0;
@@ -162,86 +145,6 @@ export async function POST(request) {
         await connection.end();
       }
 
-    } else if (connectionString.startsWith('mysql://')) {
-      try {
-        // Check if this exact combination already exists
-        const checkSql = `
-          SELECT id FROM lottery_numbers 
-          WHERE year_number = ? 
-            AND draw_sequence = ? 
-            AND set_number = ? 
-            AND six_digit_number = ? 
-            AND book_number = ?
-        `;
-        const [checkRows] = await connection.execute(checkSql, [
-          year_number, draw_sequence, set_number, six_digit_number, book_number
-        ]);
-        
-        if (checkRows.length > 0) {
-          return Response.json({
-            success: false,
-            message: 'หมายเลขชุดนี้มีอยู่ในระบบแล้ว (ปี-งวด-เซ็ต-หมายเลข-เล่ม)',
-            error: 'Duplicate entry'
-          }, { status: 409 });
-        }
-
-        const insertSql = `
-          INSERT INTO lottery_numbers (
-            year_number, draw_sequence, set_number, six_digit_number, book_number,
-            lottery_draw_id, branch_id, ticket_count, group_type
-          ) VALUES (?,?,?,?,?,?,?,?,?)
-        `;
-        await connection.execute(insertSql, [
-          year_number, draw_sequence, set_number, six_digit_number, book_number,
-          lottery_draw_id, branch_id, ticket_count, group_type
-        ]);
-        return Response.json({ success: true, data: { six_digit_number } }, { status: 201 });
-      } finally {
-        await connection.end();
-      }
-
-    } else if (connectionString.startsWith('sqlite://')) {
-      try {
-        // Check if this exact combination already exists
-        const checkSql = `
-          SELECT id FROM lottery_numbers 
-          WHERE year_number = ? 
-            AND draw_sequence = ? 
-            AND set_number = ? 
-            AND six_digit_number = ? 
-            AND book_number = ?
-        `;
-        const checkRows = await connection.query(checkSql, [
-          year_number, draw_sequence, set_number, six_digit_number, book_number
-        ]);
-        
-        if (checkRows.length > 0) {
-          await connection.close();
-          return Response.json({
-            success: false,
-            message: 'หมายเลขชุดนี้มีอยู่ในระบบแล้ว (ปี-งวด-เซ็ต-หมายเลข-เล่ม)',
-            error: 'Duplicate entry'
-          }, { status: 409 });
-        }
-
-        const insertSql = `
-          INSERT INTO lottery_numbers (
-            year_number, draw_sequence, set_number, six_digit_number, book_number,
-            lottery_draw_id, branch_id, ticket_count, group_type
-          ) VALUES (?,?,?,?,?,?,?,?,?)
-        `;
-        // @ts-ignore - run is added for sqlite connection
-        await connection.run(insertSql, [
-          year_number, draw_sequence, set_number, six_digit_number, book_number,
-          lottery_draw_id, branch_id, ticket_count, group_type
-        ]);
-        // Close after run
-        await connection.close();
-        return Response.json({ success: true, data: { six_digit_number } }, { status: 201 });
-      } catch (e) {
-        try { await connection.close(); } catch {}
-        throw e;
-      }
     }
 
     return Response.json({
@@ -254,18 +157,6 @@ export async function POST(request) {
     
     // Handle specific database errors
     if (error.code === '23505') { // PostgreSQL unique constraint violation
-      return Response.json({
-        success: false,
-        message: 'This lottery number already exists in the database',
-        error: 'Duplicate entry'
-      }, { status: 409 });
-    } else if (error.code === 'ER_DUP_ENTRY') { // MySQL duplicate entry
-      return Response.json({
-        success: false,
-        message: 'This lottery number already exists in the database',
-        error: 'Duplicate entry'
-      }, { status: 409 });
-    } else if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') { // SQLite unique constraint
       return Response.json({
         success: false,
         message: 'This lottery number already exists in the database',

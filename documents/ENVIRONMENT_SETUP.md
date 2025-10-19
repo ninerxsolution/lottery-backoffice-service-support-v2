@@ -12,8 +12,6 @@ DATABASE_URL=postgresql://username:password@localhost:5432/database_name
 ### Connection String Formats
 
 - **PostgreSQL**: `postgresql://user:password@host:port/database`
-- **MySQL**: `mysql://user:password@host:port/database`
-- **SQLite**: `sqlite:///path/to/database.db`
 
 ### Example Connection Strings
 
@@ -23,12 +21,6 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/lottery_db
 
 # PostgreSQL (cloud)
 DATABASE_URL=postgresql://user:password@db.example.com:5432/lottery_db
-
-# MySQL
-DATABASE_URL=mysql://root:password@localhost:3306/lottery_db
-
-# SQLite
-DATABASE_URL=sqlite:///./data/lottery.db
 ```
 
 ## Security Notes

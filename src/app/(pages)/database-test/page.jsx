@@ -226,7 +226,7 @@ export default function DatabaseTestPage() {
                     DATABASE_URL=postgresql://username:password@localhost:5432/database_name
                   </code>
                 </div>
-                <p>3. Supported database types: PostgreSQL, MySQL, SQLite</p>
+                <p>3. Supported database type: PostgreSQL only</p>
                 <p>4. Click "Test Database Connection" to verify your setup</p>
               </div>
             </div>

@@ -15,30 +15,8 @@ export default function LotteryMatchingPage() {
         verticalRow: null
     });
     const [unusedNumbers, setUnusedNumbers] = useState([]);
+    const [unusedCount, setUnusedCount] = useState(0);
 
-    const computeUnusedNumbers = (allNumbers, sets) => {
-        if (!Array.isArray(allNumbers) || !Array.isArray(sets)) return [];
-        try {
-            const matchedSet = new Set();
-            for (const set of sets) {
-                const matchedNumbersData = typeof set?.matched_numbers === 'string'
-                    ? JSON.parse(set.matched_numbers)
-                    : set?.matched_numbers;
-                const positions = matchedNumbersData?.positions || [];
-                for (const position of positions) {
-                    if (position?.is_filled && Array.isArray(position.matched_numbers)) {
-                        for (const num of position.matched_numbers) {
-                            matchedSet.add(num);
-                        }
-                    }
-                }
-            }
-            return allNumbers.filter((n) => !matchedSet.has(n));
-        } catch (e) {
-            console.error('Failed to compute unused numbers:', e);
-            return [];
-        }
-    };
 
     useEffect(() => {
         loadInitialData();
@@ -73,6 +51,9 @@ export default function LotteryMatchingPage() {
 
             setLotteryNumbers(numbersResult.data);
 
+            // Load unused numbers
+            await loadUnusedNumbers();
+
         } catch (err) {
             setError(err.message || 'Failed to load initial data');
             console.error('Error loading initial data:', err);
@@ -101,16 +82,27 @@ export default function LotteryMatchingPage() {
             const data = result.data || [];
             setMatchedSets(data);
 
-            // Fallback compute of unused numbers if API didn't provide them
-            if (!unusedNumbers?.length) {
-                const computed = computeUnusedNumbers(lotteryNumbers, data);
-                if (computed.length) {
-                    setUnusedNumbers(computed);
-                }
-            }
+            // Also load unused numbers when matched sets are loaded
+            await loadUnusedNumbers();
 
         } catch (err) {
             console.error('Error loading matched sets:', err);
+        }
+    };
+
+    const loadUnusedNumbers = async () => {
+        try {
+            const response = await fetch('/api/lottery/unused-numbers');
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                setUnusedNumbers(result.data.unused_numbers || []);
+                setUnusedCount(result.data.unused_count || 0);
+            } else {
+                // console.error('Failed to load unused numbers:', result.message);
+            }
+        } catch (err) {
+            console.error('Error loading unused numbers:', err);
         }
     };
 
@@ -130,17 +122,31 @@ export default function LotteryMatchingPage() {
                 })
             });
 
+            // lotteryNumbers :
+            // [
+            //     {
+            //       year_number: '2568',
+            //       draw_sequence: '66',
+            //       set_number: '14',
+            //       six_digit_number: '002706',
+            //       book_number: '9408'
+            //     },
+            //     {
+            //       year_number: '2568',
+            //       draw_sequence: '66',
+            //       set_number: '09',
+            //       six_digit_number: '007508',
+            //       book_number: '8956'
+            //     },
+            
             const result = await response.json();
 
             if (!response.ok) {
                 throw new Error(result.message || 'Failed to process matching');
             }
 
-            // Store unused numbers and reload matched sets
-            if (result?.data?.unused_numbers) {
-                setUnusedNumbers(result.data.unused_numbers);
-            }
 
+            // Reload matched sets to get the latest data (this will also load unused numbers)
             await loadMatchedSets();
 
         } catch (err) {
@@ -177,6 +183,7 @@ export default function LotteryMatchingPage() {
             // Clear UI state
             setMatchedSets([]);
             setUnusedNumbers([]);
+            setUnusedCount(0);
 
         } catch (err) {
             setError(err.message || 'Failed to reset data');
@@ -303,7 +310,7 @@ export default function LotteryMatchingPage() {
                             <div className="text-yellow-700">Incomplete Rows</div>
                         </div>
                         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
-                            <div className="text-2xl font-bold text-orange-900">{unusedNumbers.length}</div>
+                            <div className="text-2xl font-bold text-orange-900">{unusedCount}</div>
                             <div className="text-orange-700">Unused Numbers</div>
                         </div>
                     </div>
@@ -370,9 +377,9 @@ export default function LotteryMatchingPage() {
                 {/* Unused Numbers Display */}
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 mb-8">
                     <h3 className="text-lg font-semibold text-orange-900 mb-4">
-                        Unused Numbers ({unusedNumbers.length} numbers remaining)
+                        Unused Numbers ({unusedCount} numbers remaining)
                     </h3>
-                    {unusedNumbers.length === 0 ? (
+                    {unusedCount === 0 ? (
                         <p className="text-sm text-orange-700">
                             All numbers were used in the matching process.
                         </p>
@@ -441,16 +448,16 @@ export default function LotteryMatchingPage() {
                                         {/* Position Details */}
                                         <div className="grid grid-cols-5 gap-2">
                                             {matchedNumbersData?.positions?.map((position, index) => (
-                                                <div key={index} className={`p-3 rounded-lg border-2 ${position.is_filled ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}`}>
+                                                <div key={index} className={`p-3 rounded-lg border-2 ${(Array.isArray(position.matched_numbers) && position.matched_numbers.length > 0) ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-gray-50'}`}>
                                                     <div className="text-center">
                                                         <div className="text-sm font-medium text-gray-900">
-                                                            Pos {position.position}
+                                                            Pos {index}
                                                         </div>
                                                         <div className="text-xs text-gray-600 mb-1">
                                                             Template: {position.template_value}
                                                         </div>
                                                         <div className="text-xs">
-                                                            {position.is_filled ? (
+                                                            {(Array.isArray(position.matched_numbers) && position.matched_numbers.length > 0) ? (
                                                                 <span className="text-green-600 font-medium">
                                                                     {position.matched_numbers.length} match(es)
                                                                 </span>
@@ -468,22 +475,22 @@ export default function LotteryMatchingPage() {
                                         </div>
 
                                         {/* Matched Numbers List */}
-                                        {matchedNumbersData?.positions?.some(pos => pos.is_filled) && (
+                                        {matchedNumbersData?.positions?.some(pos => Array.isArray(pos.matched_numbers) && pos.matched_numbers.length > 0) && (
                                             <div className="mt-4">
                                                 <h4 className="text-sm font-medium text-gray-900 mb-2">Matched Numbers:</h4>
                                                 <div className="flex flex-wrap gap-2">
                                                     {matchedNumbersData.positions
-                                                        .filter(pos => pos.is_filled)
-                                                        .map((position, posIndex) =>
+                                                        .filter(pos => Array.isArray(pos.matched_numbers) && pos.matched_numbers.length > 0)
+                                                        .map((position, posIndex) => (
                                                             position.matched_numbers.map((number, numIndex) => (
                                                                 <span
                                                                     key={`${posIndex}-${numIndex}`}
                                                                     className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded"
                                                                 >
-                                                                    {number} (Pos {position.position})
+                                                                    {typeof number === 'object' ? JSON.stringify(number) : number.toString()} (Pos {posIndex})
                                                                 </span>
                                                             ))
-                                                        )
+                                                        ))
                                                     }
                                                 </div>
                                             </div>

@@ -35,6 +35,7 @@ CREATE TABLE lottery_matched_numbers (
     lottery_number VARCHAR(6) NOT NULL, -- Full 6-digit lottery number
     last_two_digits VARCHAR(2) NOT NULL, -- Last 2 digits for matching
     position_in_row INTEGER NOT NULL, -- Position in vertical row (0-9)
+    origin_number VARCHAR(50) NOT NULL, -- Original lottery number in format YY-DS-SN-XXXXXX-BBBB
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -42,6 +43,7 @@ CREATE TABLE lottery_matched_numbers (
 CREATE INDEX idx_lottery_matched_numbers_set_id ON lottery_matched_numbers(matched_set_id);
 CREATE INDEX idx_lottery_matched_numbers_last_two ON lottery_matched_numbers(last_two_digits);
 CREATE INDEX idx_lottery_matched_numbers_position ON lottery_matched_numbers(position_in_row);
+CREATE INDEX idx_lottery_matched_numbers_origin_number ON lottery_matched_numbers(origin_number);
 ```
 
 ## Matching Logic
@@ -51,13 +53,13 @@ CREATE INDEX idx_lottery_matched_numbers_position ON lottery_matched_numbers(pos
 2. **Matching Process**:
    - For each vertical column (0-9) in the template
    - Match lottery numbers whose last 2 digits appear in that column
-   - Track which positions in the vertical row are filled
-   - Mark as complete when all 10 positions are filled
+- Track which positions in the vertical row are filled (derived by `matched_numbers.length > 0`)
+- Mark as complete when all 10 positions are filled (i.e., 10 positions where `matched_numbers.length > 0`)
 
 ### Completion Criteria
 - **Complete Row**: All 10 positions in a vertical row have matching lottery numbers
 - **Incomplete Row**: Some positions are missing matching lottery numbers
-- **Flag System**: `is_complete` boolean field indicates completion status
+- **Flag System**: `is_complete` boolean field indicates completion status; per-position fill state is not stored as a boolean and should be derived using `matched_numbers.length > 0`.
 
 ## JSON Structure for matched_numbers
 ```json
@@ -66,14 +68,12 @@ CREATE INDEX idx_lottery_matched_numbers_position ON lottery_matched_numbers(pos
     {
       "position": 0,
       "template_value": "00",
-      "matched_numbers": ["123400", "567800"],
-      "is_filled": true
+      "matched_numbers": ["123400", "567800"]
     },
     {
       "position": 1,
       "template_value": "01", 
-      "matched_numbers": [],
-      "is_filled": false
+      "matched_numbers": []
     }
     // ... up to position 9
   ],

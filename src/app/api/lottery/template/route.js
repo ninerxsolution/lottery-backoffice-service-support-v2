@@ -34,37 +34,6 @@ export async function GET() {
         data: result.rows[0].columns
       });
       
-    } else if (connectionString.startsWith('mysql://')) {
-      const [rows] = await connection.execute('SELECT columns FROM lottery_templates LIMIT 1');
-      await connection.end();
-      
-      if (rows.length === 0) {
-        return Response.json({
-          success: false,
-          message: 'No template data found in lottery_templates table'
-        }, { status: 404 });
-      }
-      
-      return Response.json({
-        success: true,
-        data: JSON.parse(rows[0].columns)
-      });
-      
-    } else if (connectionString.startsWith('sqlite://')) {
-      const rows = await connection.query('SELECT columns FROM lottery_templates LIMIT 1');
-      await connection.close();
-      
-      if (rows.length === 0) {
-        return Response.json({
-          success: false,
-          message: 'No template data found in lottery_templates table'
-        }, { status: 404 });
-      }
-      
-      return Response.json({
-        success: true,
-        data: JSON.parse(rows[0].columns)
-      });
     }
     
   } catch (error) {
@@ -120,33 +89,6 @@ export async function PUT(request) {
       }
       return Response.json({ success: true });
 
-    } else if (connectionString.startsWith('mysql://')) {
-      try {
-        await connection.execute('START TRANSACTION');
-        await connection.execute('DELETE FROM lottery_templates');
-        await connection.execute('INSERT INTO lottery_templates (columns) VALUES (?)', [JSON.stringify(columns)]);
-        await connection.execute('COMMIT');
-      } catch (e) {
-        await connection.execute('ROLLBACK');
-        throw e;
-      } finally {
-        await connection.end();
-      }
-      return Response.json({ success: true });
-
-    } else if (connectionString.startsWith('sqlite://')) {
-      try {
-        await connection.query('BEGIN TRANSACTION');
-        await connection.query('DELETE FROM lottery_templates');
-        await connection.query('INSERT INTO lottery_templates (columns) VALUES (?)', [JSON.stringify(columns)]);
-        await connection.query('COMMIT');
-      } catch (e) {
-        await connection.query('ROLLBACK');
-        throw e;
-      } finally {
-        await connection.close();
-      }
-      return Response.json({ success: true });
     }
 
   } catch (error) {

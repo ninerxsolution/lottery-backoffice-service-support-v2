@@ -34,17 +34,7 @@ INSERT INTO lottery_numbers (
 ) VALUES (2568, 48, 10, 52044, 7332, 0, 0, 0, 'row')
 RETURNING six_digit_number;
 
--- MySQL
-INSERT INTO lottery_numbers (
-    year_number, draw_sequence, set_number, six_digit_number, book_number,
-    lottery_draw_id, branch_id, ticket_count, group_type
-) VALUES (2568, 48, 10, 52044, 7332, 0, 0, 0, 'row');
 
--- SQLite
-INSERT INTO lottery_numbers (
-    year_number, draw_sequence, set_number, six_digit_number, book_number,
-    lottery_draw_id, branch_id, ticket_count, group_type
-) VALUES (2568, 48, 10, 52044, 7332, 0, 0, 0, 'row');
 ```
 
 ### 2. Find Specific Lottery Number
@@ -217,17 +207,7 @@ ORDER BY six_digit_number;
 - Uses `~` operator for regex matching
 - Uses `INTERVAL` for date arithmetic
 
-### MySQL
-- Uses `AUTO_INCREMENT` for primary keys
-- Supports `JSON` data type (MySQL 5.7+)
-- Uses `REGEXP` for pattern matching
-- Uses `DATE_SUB()` for date arithmetic
 
-### SQLite
-- Uses `AUTOINCREMENT` for primary keys
-- Stores JSON as `TEXT`
-- Uses `GLOB` or `LIKE` for pattern matching
-- Uses `datetime()` function for date operations
 
 ## Best Practices
 

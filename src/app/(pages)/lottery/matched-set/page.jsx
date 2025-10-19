@@ -8,7 +8,8 @@ export default function LotteryMatchedSetsPage() {
     const [error, setError] = useState(null);
     const [filters, setFilters] = useState({
         isComplete: null,
-        verticalRow: null
+        verticalRow: null,
+        searchNumber: ''
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedSet, setSelectedSet] = useState(null);
@@ -23,7 +24,7 @@ export default function LotteryMatchedSetsPage() {
     useEffect(() => {
         loadMatchedSets();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters.isComplete, filters.verticalRow]);
+    }, [filters.isComplete, filters.verticalRow, filters.searchNumber]);
 
     const loadMatchedSets = async () => {
         try {
@@ -33,6 +34,7 @@ export default function LotteryMatchedSetsPage() {
             const params = new URLSearchParams();
             if (filters.isComplete !== null) params.append('is_complete', filters.isComplete);
             if (filters.verticalRow !== null) params.append('vertical_row', filters.verticalRow);
+            if (filters.searchNumber.trim()) params.append('search_number', filters.searchNumber.trim());
 
             const res = await fetch(`/api/lottery/matching?${params.toString()}`);
             const json = await res.json();
@@ -49,7 +51,7 @@ export default function LotteryMatchedSetsPage() {
     const handleFilterChange = (key, value) => {
         setFilters((prev) => ({
             ...prev,
-            [key]: value === '' ? null : value
+            [key]: key === 'searchNumber' ? value : (value === '' ? null : value)
         }));
     };
 
@@ -74,7 +76,7 @@ export default function LotteryMatchedSetsPage() {
         try {
             const data = typeof setItem?.matched_numbers === 'string' ? JSON.parse(setItem.matched_numbers) : setItem?.matched_numbers;
             const nums = Array.isArray(data?.positions)
-                ? data.positions.filter(p => p.is_filled && Array.isArray(p.matched_numbers)).flatMap(p => p.matched_numbers)
+                ? data.positions.filter(p => Array.isArray(p.matched_numbers) && p.matched_numbers.length > 0).flatMap(p => p.matched_numbers)
                 : [];
             const sixOnly = nums.map(n => n?.toString?.() ?? '').filter(v => /^\d{6}$/.test(v));
             setSelectedNumber(sixOnly[0] || '');
@@ -259,6 +261,14 @@ export default function LotteryMatchedSetsPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-4 justify-center">
+                        <input
+                            type="text"
+                            placeholder="Search by number (e.g., 67-48-10-154034-7332)"
+                            value={filters.searchNumber}
+                            onChange={(e) => handleFilterChange('searchNumber', e.target.value)}
+                            className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[300px]"
+                        />
+
                         <select
                             value={filters.isComplete === null ? '' : String(filters.isComplete)}
                             onChange={(e) => handleFilterChange('isComplete', e.target.value)}
@@ -295,7 +305,7 @@ export default function LotteryMatchedSetsPage() {
                                     : set.matched_numbers;
                                 const allNumbers = Array.isArray(matchedNumbersData?.positions)
                                     ? matchedNumbersData.positions
-                                        .filter((p) => p.is_filled && Array.isArray(p.matched_numbers))
+                                        .filter((p) => Array.isArray(p.matched_numbers) && p.matched_numbers.length > 0)
                                         .flatMap((p) => p.matched_numbers)
                                     : [];
                                 const completionPercentage = Math.round((Number(set.matched_count || 0) / 10) * 100);
@@ -324,7 +334,7 @@ export default function LotteryMatchedSetsPage() {
                                                 ) : (
                                                     allNumbers.map((num, idx) => (
                                                         <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                                                            {num}
+                                                            {typeof num === 'object' ? JSON.stringify(num) : num.toString()}
                                                         </span>
                                                     ))
                                                 )}
@@ -366,7 +376,7 @@ export default function LotteryMatchedSetsPage() {
                                             onClick={() => setSelectedNumber(num)}
                                             role="button"
                                         >
-                                            {num}
+                                            {typeof num === 'object' ? JSON.stringify(num) : num.toString()}
                                         </span>
                                     ))
                                 )}

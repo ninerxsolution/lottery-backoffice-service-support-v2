@@ -109,10 +109,15 @@ Lottery Backoffice Service Support v2
 ### Lottery Matched Set Page (`/lottery/matched-set`)
 - **Purpose**: Browse and inspect matched sets created by the matching process
 - **Features**:
-  - Paginated list of matched sets
-  - Detail view per set
-  - Filtering options
-- **Status**: Implemented
+  - Search functionality by lottery number (e.g., "67-48-10-154034-7332")
+  - Filter by completion status (Complete/Incomplete/All)
+  - Filter by vertical row (0-9)
+  - List view of all matched sets with completion indicators
+  - Modal popup for detailed inspection and image generation
+  - Image generation with single card or stacked layout options
+  - Download generated lottery card images as PNG
+  - Real-time search with instant filtering
+- **Status**: Implemented with full search and image generation capabilities
 
 ### Lottery Image Generator Page (`/lottery-image-gen-test`)
 - **Purpose**: Generate a lottery card image by rendering a 6-digit number onto a template
@@ -128,7 +133,7 @@ Lottery Backoffice Service Support v2
 ### Database Test API (`/api/database/test`)
 - **GET**: Tests actual database connection
   - Returns connection status, database version, current time
-  - Handles PostgreSQL, MySQL, and SQLite databases
+  - Handles PostgreSQL database only
 - **POST**: Returns connection information without connecting
   - Parses DATABASE_URL and returns connection details
   - Safe to call without establishing actual connection
@@ -136,21 +141,22 @@ Lottery Backoffice Service Support v2
 ### Lottery Template API (`/api/lottery/template`)
 - **GET**: Fetches template data from lottery_templates table
   - Returns columns field data in JSON format
-  - Handles PostgreSQL, MySQL, and SQLite databases
+  - Handles PostgreSQL database only
   - Returns 404 if no template data found
   - Proper error handling for database connection issues
 
 ### Lottery Numbers API (`/api/lottery/numbers`)
 - **GET**: Fetches all `six_digit_number` values from `lottery_numbers`
   - Sorted ascending
-  - Supports PostgreSQL, MySQL, and SQLite
+  - Supports PostgreSQL database only
   - Returns array of strings/numbers
 
 ### Lottery Matching API (`/api/lottery/matching`)
 - **GET**: Fetches matched lottery sets with optional filters
-  - Query parameters: template_id, is_complete, vertical_row
+  - Query parameters: template_id, is_complete, vertical_row, search_number
+  - search_number: Search for specific lottery number in matched sets
   - Returns matched sets with completion statistics
-  - Supports PostgreSQL, MySQL, and SQLite
+  - Supports PostgreSQL database only
 - **POST**: Processes lottery numbers against templates
   - Body: { templateId, lotteryNumbers }
   - Creates matched sets and individual number records
@@ -161,7 +167,7 @@ Lottery Backoffice Service Support v2
 ### Required Environment Variables
 - `DATABASE_URL` - Database connection string
   - Format: `postgresql://user:password@host:port/database`
-  - Supported: PostgreSQL, MySQL, SQLite
+  - Supported: PostgreSQL only
 
 ### Environment Setup
 - Create `.env.local` file in project root
@@ -183,10 +189,11 @@ Lottery Backoffice Service Support v2
 - **2024-10-14**: Created matching API endpoints and UI with completion flags
 - **2025-10-15**: Added lottery image generator page and documented route
 - **2025-10-16**: Reconciled routes; updated matching path; added matched-set page
+- **2025-10-16**: Added search functionality to matched-set page for finding sets by lottery number
 
 ## Notes
 
 - All pages use Tailwind CSS for styling
-- Database connection utility supports multiple database types
+- Database connection utility supports PostgreSQL database only
 - Environment variables are properly secured and not committed to version control
 - API routes follow Next.js 13+ App Router conventions

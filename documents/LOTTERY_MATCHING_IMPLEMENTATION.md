@@ -86,7 +86,7 @@ Created `/lottery/matching_gen` page with:
 - Completion statistics per row
 
 ### 4. Database Integration
-- Multi-database support (PostgreSQL, MySQL, SQLite)
+- PostgreSQL database support only
 - Proper error handling and connection management
 - Optimized queries with indexes
 - JSON data storage for flexible matching details

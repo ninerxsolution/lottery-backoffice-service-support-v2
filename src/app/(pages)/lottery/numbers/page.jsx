@@ -38,7 +38,9 @@ export default function LotteryNumbersPage() {
     const filteredNumbers = useMemo(() => {
         if (!hasAnyPosition) return numbers;
         return numbers.filter((n) => {
-            const str = String(n).padStart(6, '0');
+            // Handle both object and string formats for backward compatibility
+            const sixDigitNumber = typeof n === 'object' ? n.six_digit_number : n;
+            const str = String(sixDigitNumber).padStart(6, '0');
             for (let i = 0; i < 6; i++) {
                 const d = positions[i];
                 if (d !== '' && str[i] !== d) return false;
@@ -212,11 +214,16 @@ export default function LotteryNumbersPage() {
                     <div className="text-gray-600">No numbers found.</div>
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {filteredNumbers.map((num, idx) => (
-                            <div key={`${num}-${idx}`} className="px-3 py-2 border rounded text-center font-semibold text-gray-800 bg-gray-50">
-                                {String(num).padStart(6, '0')}
-                            </div>
-                        ))}
+                        {filteredNumbers.map((num, idx) => {
+                            // Handle both object and string formats for backward compatibility
+                            const sixDigitNumber = typeof num === 'object' ? num.six_digit_number : num;
+                            const uniqueKey = typeof num === 'object' ? `${num.year_number}-${num.draw_sequence}-${num.set_number}-${num.six_digit_number}-${num.book_number}` : num;
+                            return (
+                                <div key={`${uniqueKey}-${idx}`} className="px-3 py-2 border rounded text-center font-semibold text-gray-800 bg-gray-50">
+                                    {String(sixDigitNumber).padStart(6, '0')}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 

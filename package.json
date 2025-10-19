@@ -9,12 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "mysql2": "^3.9.1",
     "next": "15.5.5",
     "pg": "^8.11.3",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "sqlite3": "^5.1.6"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -2,14 +2,12 @@
 
 ## Overview
 
-This feature provides a comprehensive database connection testing system for the Lottery Backoffice Service Support v2 application. It supports multiple database types and provides a user-friendly interface for testing connections.
+This feature provides a comprehensive database connection testing system for the Lottery Backoffice Service Support v2 application. It supports PostgreSQL database only and provides a user-friendly interface for testing connections.
 
 ## Features
 
 ### Supported Database Types
 - **PostgreSQL** - Full support with connection pooling
-- **MySQL** - Full support with prepared statements
-- **SQLite** - Full support with file-based storage
 
 ### Core Functionality
 - Database connection testing
@@ -32,12 +30,6 @@ This feature provides a comprehensive database connection testing system for the
 ```javascript
 // PostgreSQL
 postgresql://user:password@host:port/database
-
-// MySQL
-mysql://user:password@host:port/database
-
-// SQLite
-sqlite:///path/to/database.db
 ```
 
 ### API Routes (`src/app/api/database/test/route.js`)
@@ -45,7 +37,7 @@ sqlite:///path/to/database.db
 #### GET `/api/database/test`
 - Tests actual database connection
 - Returns connection status, database version, and current time
-- Handles all supported database types
+- Handles PostgreSQL database only
 
 #### POST `/api/database/test`
 - Returns parsed connection information
@@ -78,7 +70,7 @@ sqlite:///path/to/database.db
 ### Connection Handling
 - Proper connection cleanup on errors
 - SSL support for production PostgreSQL connections
-- Prepared statements for MySQL to prevent SQL injection
+- Prepared statements for PostgreSQL to prevent SQL injection
 
 ### Error Handling
 - Comprehensive error catching
@@ -105,8 +97,6 @@ sqlite:///path/to/database.db
 
 ### Production Dependencies
 - `pg` (^8.11.3) - PostgreSQL client
-- `mysql2` (^3.9.1) - MySQL client
-- `sqlite3` (^5.1.6) - SQLite client
 
 ### Built-in Dependencies
 - `next` - Next.js framework

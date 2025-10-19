@@ -1,106 +1,5 @@
 import { createConnection } from '@/lib/database';
 
-// Ensure required tables exist for each supported DB
-async function ensureSchema(connectionString, connection) {
-  if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
-    const client = await connection.connect();
-    try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS lottery_templates (
-          id SERIAL PRIMARY KEY,
-          columns JSONB NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-      `);
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS lottery_matched_sets (
-          id SERIAL PRIMARY KEY,
-          template_id INTEGER NOT NULL,
-          vertical_row_index INTEGER NOT NULL,
-          is_complete BOOLEAN NOT NULL DEFAULT FALSE,
-          matched_numbers JSONB NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-      `);
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS lottery_matched_numbers (
-          id SERIAL PRIMARY KEY,
-          matched_set_id INTEGER NOT NULL,
-          lottery_number VARCHAR(32) NOT NULL,
-          last_two_digits VARCHAR(2) NOT NULL,
-          position_in_row INTEGER NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-      `);
-    } finally {
-      client.release();
-    }
-  } else if (connectionString.startsWith('mysql://')) {
-    // MySQL 5.7+ supports JSON; fallback to TEXT if needed
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS lottery_templates (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        columns JSON NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS lottery_matched_sets (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        template_id INT NOT NULL,
-        vertical_row_index INT NOT NULL,
-        is_complete TINYINT(1) NOT NULL DEFAULT 0,
-        matched_numbers JSON NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-    await connection.execute(`
-      CREATE TABLE IF NOT EXISTS lottery_matched_numbers (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        matched_set_id INT NOT NULL,
-        lottery_number VARCHAR(32) NOT NULL,
-        last_two_digits CHAR(2) NOT NULL,
-        position_in_row INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-  } else if (connectionString.startsWith('sqlite://')) {
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS lottery_templates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        columns TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS lottery_matched_sets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        template_id INTEGER NOT NULL,
-        vertical_row_index INTEGER NOT NULL,
-        is_complete INTEGER NOT NULL DEFAULT 0,
-        matched_numbers TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS lottery_matched_numbers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        matched_set_id INTEGER NOT NULL,
-        lottery_number TEXT NOT NULL,
-        last_two_digits TEXT NOT NULL,
-        position_in_row INTEGER NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
-  }
-}
-
 /**
  * GET /api/lottery/matching
  * Fetch all matched lottery sets with completion status
@@ -108,7 +7,7 @@ async function ensureSchema(connectionString, connection) {
 export async function GET(request) {
   try {
     const connectionString = process.env.DATABASE_URL;
-    
+
     if (!connectionString) {
       return Response.json({
         success: false,
@@ -117,11 +16,11 @@ export async function GET(request) {
     }
 
     const connection = createConnection(connectionString);
-    await ensureSchema(connectionString, connection);
     const { searchParams } = new URL(request.url);
     const templateId = searchParams.get('template_id');
     const isComplete = searchParams.get('is_complete');
     const verticalRow = searchParams.get('vertical_row');
+    const searchNumber = searchParams.get('search_number');
 
     let query = `
       SELECT 
@@ -136,7 +35,7 @@ export async function GET(request) {
       FROM lottery_matched_sets lms
       LEFT JOIN lottery_matched_numbers lmn ON lms.id = lmn.matched_set_id
     `;
-    
+
     const conditions = [];
     const params = [];
     let paramIndex = 1;
@@ -159,6 +58,27 @@ export async function GET(request) {
       paramIndex++;
     }
 
+    if (searchNumber) {
+      // Search for the number in both the matched_numbers JSONB field and origin_number field
+      // This will search in the matched_numbers array within each position AND in lottery_matched_numbers.origin_number
+      conditions.push(`(
+        EXISTS (
+          SELECT 1 
+          FROM jsonb_array_elements(lms.matched_numbers->'positions') AS position,
+               jsonb_array_elements_text(position->'matched_numbers') AS matched_num
+          WHERE matched_num = $${paramIndex}
+        ) OR EXISTS (
+          SELECT 1 
+          FROM lottery_matched_numbers lmn
+          WHERE lmn.matched_set_id = lms.id 
+            AND lmn.origin_number = $${paramIndex + 1}
+        )
+      )`);
+      params.push(searchNumber);
+      params.push(searchNumber);
+      paramIndex += 2;
+    }
+
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
     }
@@ -166,44 +86,19 @@ export async function GET(request) {
     query += ' GROUP BY lms.id ORDER BY lms.created_at DESC';
 
     let result;
-    
+
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
       result = await client.query(query, params);
       client.release();
       await connection.end();
-      
+
       return Response.json({
         success: true,
         data: result.rows,
         count: result.rows.length
       });
-      
-    } else if (connectionString.startsWith('mysql://')) {
-      // Convert PostgreSQL placeholders to MySQL placeholders
-      const mysqlQuery = query.replace(/\$\d+/g, '?');
-      const [rows] = await connection.execute(mysqlQuery, params);
-      await connection.end();
-      
-      return Response.json({
-        success: true,
-        data: rows,
-        count: rows.length
-      });
-      
-    } else if (connectionString.startsWith('sqlite://')) {
-      // Convert PostgreSQL placeholders to SQLite placeholders
-      const sqliteQuery = query.replace(/\$\d+/g, '?');
-      const rows = await connection.query(sqliteQuery, params);
-      await connection.close();
-      
-      return Response.json({
-        success: true,
-        data: rows,
-        count: rows.length
-      });
     }
-    
   } catch (error) {
     console.error('Error fetching matched lottery sets:', error);
     return Response.json({
@@ -215,13 +110,13 @@ export async function GET(request) {
 }
 
 /**
- * POST /api/lottery/matching/process
+ * POST /api/lottery/matching
  * Process lottery numbers against templates and create matched sets
  */
 export async function POST(request) {
   try {
     const connectionString = process.env.DATABASE_URL;
-    
+
     if (!connectionString) {
       return Response.json({
         success: false,
@@ -240,20 +135,19 @@ export async function POST(request) {
     }
 
     const connection = createConnection(connectionString);
-    await ensureSchema(connectionString, connection);
 
     let templateResult;
-    
+
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
-      
+
       // Clear existing data before new processing
       await client.query('DELETE FROM lottery_matched_numbers');
       await client.query('DELETE FROM lottery_matched_sets');
-      
+
       templateResult = await client.query('SELECT columns FROM lottery_templates WHERE id = $1', [templateId]);
       client.release();
-      
+
       if (templateResult.rows.length === 0) {
         await connection.end();
         return Response.json({
@@ -261,83 +155,26 @@ export async function POST(request) {
           message: 'Template not found'
         }, { status: 404 });
       }
-      
+
       const rawTemplate = templateResult.rows[0].columns;
       const templateGrid = Array.isArray(rawTemplate?.columns) ? rawTemplate.columns : rawTemplate;
       if (!Array.isArray(templateGrid)) {
         await connection.end();
         return Response.json({ success: false, message: 'Template columns data is invalid' }, { status: 400 });
       }
-      
-      const processedResults = await processMatching(connection, templateGrid, lotteryNumbers, templateId);
+
+      const lotteryArr = lotteryNumbers;
+
+      const processedResults = await processMatching(connection, templateGrid, lotteryArr, templateId);
       await connection.end();
-      
+
       return Response.json({
         success: true,
         data: processedResults
       });
-      
-    } else if (connectionString.startsWith('mysql://')) {
-      // Clear existing data before new processing
-      await connection.execute('DELETE FROM lottery_matched_numbers');
-      await connection.execute('DELETE FROM lottery_matched_sets');
-      
-      const [rows] = await connection.execute('SELECT columns FROM lottery_templates WHERE id = ?', [templateId]);
-      
-      if (rows.length === 0) {
-        await connection.end();
-        return Response.json({
-          success: false,
-          message: 'Template not found'
-        }, { status: 404 });
-      }
-      
-      const rawTemplate = JSON.parse(rows[0].columns);
-      const templateGrid = Array.isArray(rawTemplate?.columns) ? rawTemplate.columns : rawTemplate;
-      if (!Array.isArray(templateGrid)) {
-        await connection.end();
-        return Response.json({ success: false, message: 'Template columns data is invalid' }, { status: 400 });
-      }
-      
-      const processedResults = await processMatching(connection, templateGrid, lotteryNumbers, templateId);
-      await connection.end();
-      
-      return Response.json({
-        success: true,
-        data: processedResults
-      });
-      
-    } else if (connectionString.startsWith('sqlite://')) {
-      // Clear existing data before new processing
-      await connection.query('DELETE FROM lottery_matched_numbers');
-      await connection.query('DELETE FROM lottery_matched_sets');
-      
-      const rows = await connection.query('SELECT columns FROM lottery_templates WHERE id = ?', [templateId]);
-      
-      if (rows.length === 0) {
-        await connection.close();
-        return Response.json({
-          success: false,
-          message: 'Template not found'
-        }, { status: 404 });
-      }
-      
-      const rawTemplate = JSON.parse(rows[0].columns);
-      const templateGrid = Array.isArray(rawTemplate?.columns) ? rawTemplate.columns : rawTemplate;
-      if (!Array.isArray(templateGrid)) {
-        await connection.close();
-        return Response.json({ success: false, message: 'Template columns data is invalid' }, { status: 400 });
-      }
-      
-      const processedResults = await processMatching(connection, templateGrid, lotteryNumbers, templateId);
-      await connection.close();
-      
-      return Response.json({
-        success: true,
-        data: processedResults
-      });
+
     }
-    
+
   } catch (error) {
     console.error('Error processing lottery matching:', error);
     return Response.json({
@@ -355,7 +192,7 @@ export async function POST(request) {
 export async function DELETE() {
   try {
     const connectionString = process.env.DATABASE_URL;
-    
+
     if (!connectionString) {
       return Response.json({
         success: false,
@@ -364,36 +201,22 @@ export async function DELETE() {
     }
 
     const connection = createConnection(connectionString);
-    await ensureSchema(connectionString, connection);
 
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
-      
+
       // Delete in correct order due to foreign key constraints
       await client.query('DELETE FROM lottery_matched_numbers');
       await client.query('DELETE FROM lottery_matched_sets');
-      
+
       client.release();
       await connection.end();
-      
-    } else if (connectionString.startsWith('mysql://')) {
-      // Delete in correct order due to foreign key constraints
-      await connection.execute('DELETE FROM lottery_matched_numbers');
-      await connection.execute('DELETE FROM lottery_matched_sets');
-      await connection.end();
-      
-    } else if (connectionString.startsWith('sqlite://')) {
-      // Delete in correct order due to foreign key constraints
-      await connection.query('DELETE FROM lottery_matched_numbers');
-      await connection.query('DELETE FROM lottery_matched_sets');
-      await connection.close();
-    }
 
-    return Response.json({
-      success: true,
-      message: 'All matched sets and numbers cleared from database'
-    });
-    
+      return Response.json({
+        success: true,
+        message: 'All matched sets and numbers cleared from database'
+      });
+    }
   } catch (error) {
     console.error('Error clearing matched data:', error);
     return Response.json({
@@ -407,39 +230,63 @@ export async function DELETE() {
 /**
  * Process matching logic for lottery numbers against template
  */
-async function processMatching(connection, template, lotteryNumbers, templateId) {
+async function processMatching(connection, template, lotteryArr, templateId) {
   const connectionString = process.env.DATABASE_URL;
   const results = [];
 
+  // lotteryArr
+  // [
+  //     {
+  //       year_number: '2568', required for validate unique in Query WHERE (slide to get last 2 characters before)
+  //       draw_sequence: '66', required for validate unique in Query WHERE
+  //       set_number: '14', required for validate unique in Query WHERE
+  //       six_digit_number: '002706', required for validate unique in Query WHERE
+  //       book_number: '9408' required for validate unique in Query WHERE
+  //     },
+  //     {
+  //       year_number: '2568',
+  //       draw_sequence: '66',
+  //       set_number: '09',
+  //       six_digit_number: '007508',
+  //       book_number: '8956'
+  //     },
+
+
   // Make a working copy and track usage to enforce single-use
-  const remainingNumbers = lotteryNumbers.map(n => n.toString());
+  // Use complete lottery number objects instead of just six_digit_number
+  const remainingNumbers = [...lotteryArr];
+
+  // Helper to create unique key for lottery number
+  const createUniqueKey = (lotteryNumber) => {
+    return `${lotteryNumber.year_number.slice(-2)}-${lotteryNumber.draw_sequence}-${lotteryNumber.set_number}-${lotteryNumber.six_digit_number}-${lotteryNumber.book_number}`;
+  };
 
   // Helper to count how many numbers available for a specific last-two-digits
   const countAvailable = (lastTwo) => {
-    return remainingNumbers.filter(n => n.slice(-2) === lastTwo).length;
+    return remainingNumbers.filter(n => n.six_digit_number.toString().slice(-2) === lastTwo).length;
   };
 
   // Helper to take the rarest number (least common last-two-digits first)
   const takeNumberFor = (lastTwo) => {
     const candidates = remainingNumbers
       .map((n, idx) => ({ n, idx }))
-      .filter(({ n }) => n.slice(-2) === lastTwo);
-    
+      .filter(({ n }) => n.six_digit_number.toString().slice(-2) === lastTwo);
+
     if (candidates.length === 0) return null;
-    
+
     // Among candidates, pick the one whose last-two-digits is rarest overall
     const scored = candidates.map(({ n, idx }) => {
-      const lastTwoOfN = n.slice(-2);
+      const lastTwoOfN = n.six_digit_number.toString().slice(-2);
       const rarity = countAvailable(lastTwoOfN); // lower is rarer
       return { n, idx, rarity };
     });
-    
+
     // Sort by rarity (ascending) - prefer rarer numbers
     scored.sort((a, b) => a.rarity - b.rarity);
     const chosen = scored[0];
-    
-    remainingNumbers.splice(chosen.idx, 1);
-    return chosen.n;
+
+    const selectedNumber = remainingNumbers.splice(chosen.idx, 1)[0];
+    return selectedNumber;
   };
 
   // Calculate potential for each column dynamically
@@ -456,7 +303,7 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
   // Keep generating sets while there is at least one column with potential > 0
   // Safety cap to avoid infinite loops in unexpected cases
   let safetyCounter = 0;
-  const maxIterations = Math.max(10, lotteryNumbers.length * 2);
+  const maxIterations = Math.max(10, lotteryArr.length * 2);
   while (safetyCounter < maxIterations) {
     safetyCounter++;
 
@@ -484,10 +331,10 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
       const picked = takeNumberFor(templateValue);
       if (picked) filledPositions++;
       matchedPositions.push({
-        position: rowIndex,
         template_value: templateValue,
-        matched_numbers: picked ? [picked] : [],
-        is_filled: Boolean(picked)
+        matched_numbers: picked ? [picked.six_digit_number] : [],
+        matched_lottery_object: picked || null,
+        // is_filled removed; derive via matched_numbers.length > 0
       });
     }
 
@@ -517,44 +364,34 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
         RETURNING id
       `, [matchedSetData.template_id, matchedSetData.vertical_row_index, matchedSetData.is_complete, matchedSetData.matched_numbers]);
       client.release();
-    } else if (connectionString.startsWith('mysql://')) {
-      const [result] = await connection.execute(`
-        INSERT INTO lottery_matched_sets (template_id, vertical_row_index, is_complete, matched_numbers)
-        VALUES (?, ?, ?, ?)
-      `, [matchedSetData.template_id, matchedSetData.vertical_row_index, matchedSetData.is_complete, matchedSetData.matched_numbers]);
-      insertResult = { rows: [{ id: result.insertId }] };
-    } else if (connectionString.startsWith('sqlite://')) {
-      const result = await connection.query(`
-        INSERT INTO lottery_matched_sets (template_id, vertical_row_index, is_complete, matched_numbers)
-        VALUES (?, ?, ?, ?)
-      `, [matchedSetData.template_id, matchedSetData.vertical_row_index, matchedSetData.is_complete, matchedSetData.matched_numbers]);
-      insertResult = { rows: [{ id: result.lastID }] };
     }
 
     const matchedSetId = insertResult.rows[0].id;
-
     // Insert matched numbers (only those actually used)
-    for (const position of matchedPositions) {
-      if (!position.is_filled) continue;
-      for (const lotteryNumber of position.matched_numbers) {
-        const lastTwoDigits = lotteryNumber.toString().slice(-2);
-        if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
-          const client = await connection.connect();
+    for (let rowIndex = 0; rowIndex < matchedPositions.length; rowIndex++) {
+      const position = matchedPositions[rowIndex];
+      if (!position.matched_lottery_object) continue;
+      
+      const lotteryObject = position.matched_lottery_object;
+      const lotteryNumber = lotteryObject.six_digit_number;
+      const lastTwoDigits = lotteryNumber.toString().slice(-2);
+      
+      if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
+        const client = await connection.connect();
+        try {
+          // Create unique key for this lottery number
+          const uniqueKey = createUniqueKey(lotteryObject);
+          
+          // Use the complete lottery object data directly instead of database lookup
+          // This ensures we use the exact data that was provided in the request
+          const originalNumber = uniqueKey;
+
           await client.query(`
-            INSERT INTO lottery_matched_numbers (matched_set_id, lottery_number, last_two_digits, position_in_row)
-            VALUES ($1, $2, $3, $4)
-          `, [matchedSetId, lotteryNumber, lastTwoDigits, position.position]);
+            INSERT INTO lottery_matched_numbers (matched_set_id, lottery_number, last_two_digits, position_in_row, origin_number)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [matchedSetId, lotteryNumber, lastTwoDigits, rowIndex, originalNumber]);
+        } finally {
           client.release();
-        } else if (connectionString.startsWith('mysql://')) {
-          await connection.execute(`
-            INSERT INTO lottery_matched_numbers (matched_set_id, lottery_number, last_two_digits, position_in_row)
-            VALUES (?, ?, ?, ?)
-          `, [matchedSetId, lotteryNumber, lastTwoDigits, position.position]);
-        } else if (connectionString.startsWith('sqlite://')) {
-          await connection.query(`
-            INSERT INTO lottery_matched_numbers (matched_set_id, lottery_number, last_two_digits, position_in_row)
-            VALUES (?, ?, ?, ?)
-          `, [matchedSetId, lotteryNumber, lastTwoDigits, position.position]);
         }
       }
     }
@@ -572,6 +409,10 @@ async function processMatching(connection, template, lotteryNumbers, templateId)
 
   return {
     matched_sets: results,
-    unused_numbers: remainingNumbers
+    unused_numbers: remainingNumbers.map(n => ({
+      six_digit_number: n.six_digit_number,
+      unique_key: createUniqueKey(n),
+      lottery_object: n
+    }))
   };
 }
