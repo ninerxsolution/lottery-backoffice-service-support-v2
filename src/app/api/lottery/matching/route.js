@@ -22,89 +22,98 @@ export async function GET(request) {
     const verticalRow = searchParams.get('vertical_row');
     const searchNumber = searchParams.get('search_number');
 
-    let query = `
-      SELECT 
-        lms.id,
-        lms.template_id,
-        lms.vertical_row_index,
-        lms.is_complete,
-        lms.matched_numbers,
-        lms.created_at,
-        lms.updated_at,
-        lms.status,
-        COUNT(lmn.id) as matched_count,
-        CASE 
-          WHEN lsi.id IS NOT NULL THEN 'on_shelf'
-          ELSE COALESCE(lms.status, 'processing')
-        END as display_status
-      FROM lottery_matched_sets lms
-      LEFT JOIN lottery_matched_numbers lmn ON lms.id = lmn.matched_set_id AND (lmn.is_active = true OR lmn.is_active IS NULL)
-      LEFT JOIN lottery_shelf_items lsi ON lms.id = lsi.matched_set_id
-      WHERE (lms.is_active = true OR lms.is_active IS NULL)
-    `;
-
-    const conditions = [];
-    const params = [];
-    let paramIndex = 1;
-
-    if (templateId) {
-      conditions.push(`lms.template_id = $${paramIndex}`);
-      params.push(templateId);
-      paramIndex++;
-    }
-
-    if (isComplete !== null && isComplete !== undefined) {
-      conditions.push(`lms.is_complete = $${paramIndex}`);
-      params.push(isComplete === 'true');
-      paramIndex++;
-    }
-
-    if (verticalRow !== null && verticalRow !== undefined) {
-      conditions.push(`lms.vertical_row_index = $${paramIndex}`);
-      params.push(parseInt(verticalRow));
-      paramIndex++;
-    }
-
-    if (searchNumber) {
-      // Search for the number in both the matched_numbers JSONB field and origin_number field
-      // This will search in the matched_numbers array within each position AND in lottery_matched_numbers.origin_number
-      conditions.push(`(
-        EXISTS (
-          SELECT 1 
-          FROM jsonb_array_elements(lms.matched_numbers->'positions') AS position,
-               jsonb_array_elements_text(position->'matched_numbers') AS matched_num
-          WHERE matched_num = $${paramIndex}
-        ) OR EXISTS (
-          SELECT 1 
-          FROM lottery_matched_numbers lmn
-          WHERE lmn.matched_set_id = lms.id 
-            AND lmn.origin_number = $${paramIndex + 1}
-        )
-      )`);
-      params.push(searchNumber);
-      params.push(searchNumber);
-      paramIndex += 2;
-    }
-
-    if (conditions.length > 0) {
-      query += ' AND ' + conditions.join(' AND ');
-    }
-
-    query += ' GROUP BY lms.id, lms.template_id, lms.vertical_row_index, lms.is_complete, lms.matched_numbers, lms.created_at, lms.updated_at, lms.status, lsi.id ORDER BY lms.created_at DESC';
-
-    let result;
-
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
-      result = await client.query(query, params);
-      client.release();
-      await connection.end();
 
-      return Response.json({
-        success: true,
-        data: result.rows,
-        count: result.rows.length
-      });
+      try {
+        const hasShelfItemsTable = await tableExists(client, 'lottery_shelf_items');
+
+        let query = `
+          SELECT 
+            lms.id,
+            lms.template_id,
+            lms.vertical_row_index,
+            lms.is_complete,
+            lms.matched_numbers,
+            lms.created_at,
+            lms.updated_at,
+            lms.status,
+            COUNT(lmn.id) as matched_count,
+            ${hasShelfItemsTable
+              ? "CASE WHEN lsi.id IS NOT NULL THEN 'on_shelf' ELSE COALESCE(lms.status, 'processing') END"
+              : "COALESCE(lms.status, 'processing')"} as display_status
+          FROM lottery_matched_sets lms
+          LEFT JOIN lottery_matched_numbers lmn ON lms.id = lmn.matched_set_id AND (lmn.is_active = true OR lmn.is_active IS NULL)
+          ${hasShelfItemsTable ? 'LEFT JOIN lottery_shelf_items lsi ON lms.id = lsi.matched_set_id' : ''}
+          WHERE (lms.is_active = true OR lms.is_active IS NULL)
+        `;
+
+        const conditions = [];
+        const params = [];
+        let paramIndex = 1;
+
+        if (templateId) {
+          conditions.push(`lms.template_id = $${paramIndex}`);
+          params.push(templateId);
+          paramIndex++;
+        }
+
+        if (isComplete !== null && isComplete !== undefined) {
+          conditions.push(`lms.is_complete = $${paramIndex}`);
+          params.push(isComplete === 'true');
+          paramIndex++;
+        }
+
+        if (verticalRow !== null && verticalRow !== undefined) {
+          conditions.push(`lms.vertical_row_index = $${paramIndex}`);
+          params.push(parseInt(verticalRow));
+          paramIndex++;
+        }
+
+        if (searchNumber) {
+          // Search supports both old structure (object with positions->matched_numbers[]) and new compact array structure
+          conditions.push(`(
+            EXISTS (
+              SELECT 1 FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(lms.matched_numbers) = 'array' THEN lms.matched_numbers ELSE '[]'::jsonb END
+              ) AS elem
+              WHERE elem->>'matched_numbers' = $${paramIndex}
+            ) OR EXISTS (
+              SELECT 1 
+              FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(lms.matched_numbers) = 'object' THEN lms.matched_numbers->'positions' ELSE '[]'::jsonb END
+              ) AS position,
+              jsonb_array_elements_text(COALESCE(position->'matched_numbers', '[]'::jsonb)) AS matched_num
+              WHERE matched_num = $${paramIndex}
+            ) OR EXISTS (
+              SELECT 1 
+              FROM lottery_matched_numbers lmn
+              WHERE lmn.matched_set_id = lms.id 
+                AND lmn.origin_number = $${paramIndex + 1}
+            )
+          )`);
+          params.push(searchNumber);
+          params.push(searchNumber);
+          paramIndex += 2;
+        }
+
+        if (conditions.length > 0) {
+          query += ' AND ' + conditions.join(' AND ');
+        }
+
+        query += ` GROUP BY lms.id, lms.template_id, lms.vertical_row_index, lms.is_complete, lms.matched_numbers, lms.created_at, lms.updated_at, lms.status${hasShelfItemsTable ? ', lsi.id' : ''} ORDER BY lms.created_at DESC`;
+
+        const result = await client.query(query, params);
+
+        return Response.json({
+          success: true,
+          data: result.rows,
+          count: result.rows.length
+        });
+      } finally {
+        client.release();
+        await connection.end();
+      }
     }
   } catch (error) {
     console.error('Error fetching matched lottery sets:', error);
@@ -208,6 +217,8 @@ export async function PUT(request) {
 
       try {
         // Find all complete sets that are still in processing status
+        const hasShelfTable = await tableExists(client, 'lottery_shelf');
+        const hasShelfItemsTable = await tableExists(client, 'lottery_shelf_items');
         const completeSetsResult = await client.query(`
           SELECT 
             lms.id,
@@ -228,7 +239,7 @@ export async function PUT(request) {
         let movedCount = 0;
         for (const set of completeSetsResult.rows) {
           try {
-            await moveToShelfAutomatically(client, set.id);
+            await moveToShelfAutomatically(client, set.id, { hasShelfTable, hasShelfItemsTable });
             movedCount++;
             console.log(` Moved set ${set.id} to shelf`);
           } catch (error) {
@@ -422,16 +433,35 @@ async function getUnusedNumbers(client) {
  * Fill incomplete set with available numbers
  */
 async function fillIncompleteSet(client, set, availableNumbers, template) {
-  const matchedNumbersData = typeof set.matched_numbers === 'string'
+  const matchedNumbersDataRaw = typeof set.matched_numbers === 'string'
     ? JSON.parse(set.matched_numbers)
     : set.matched_numbers;
-  const positions = matchedNumbersData.positions;
+
+  // Convert to compact array structure if needed
+  let positionsArray;
+  if (Array.isArray(matchedNumbersDataRaw)) {
+    positionsArray = matchedNumbersDataRaw;
+  } else if (matchedNumbersDataRaw && Array.isArray(matchedNumbersDataRaw.positions)) {
+    positionsArray = matchedNumbersDataRaw.positions.map(pos => ({
+      template_value: pos.template_value,
+      matched_numbers: Array.isArray(pos.matched_numbers) && pos.matched_numbers.length > 0 ? pos.matched_numbers[0] : '',
+      unique_key: pos.matched_lottery_object ? createUniqueKey(pos.matched_lottery_object) : ''
+    }));
+  } else {
+    // fallback init using template grid
+    positionsArray = Array.from({ length: 10 }).map((_, idx) => ({
+      template_value: template[set.vertical_row_index]?.[idx] ?? '',
+      matched_numbers: '',
+      unique_key: ''
+    }));
+  }
+
   let filledCount = 0;
 
-  // Find empty positions
-  const emptyPositions = positions
+  // Find empty positions in compact structure
+  const emptyPositions = positionsArray
     .map((pos, index) => ({ pos, index }))
-    .filter(({ pos }) => pos.matched_numbers.length === 0);
+    .filter(({ pos }) => !pos.matched_numbers || pos.matched_numbers === '');
 
   // Fill empty positions
   for (const { pos, index } of emptyPositions) {
@@ -439,33 +469,25 @@ async function fillIncompleteSet(client, set, availableNumbers, template) {
     const matchingNumber = findMatchingNumber(availableNumbers, templateValue);
 
     if (matchingNumber) {
-      // Update position
-      pos.matched_numbers = [matchingNumber.six_digit_number];
-      pos.matched_lottery_object = matchingNumber;
+      // Update compact position
+      pos.matched_numbers = matchingNumber.six_digit_number;
+      pos.unique_key = createUniqueKey(matchingNumber);
 
       // Mark number as used
       matchingNumber.used = true;
       filledCount++;
 
       // Insert into lottery_matched_numbers
-      const uniqueKey = createUniqueKey(matchingNumber);
       await client.query(`
         INSERT INTO lottery_matched_numbers (matched_set_id, lottery_number, last_two_digits, position_in_row, origin_number)
         VALUES ($1, $2, $3, $4, $5)
-      `, [set.id, matchingNumber.six_digit_number, templateValue, index, uniqueKey]);
+      `, [set.id, matchingNumber.six_digit_number, templateValue, index, pos.unique_key]);
     }
   }
 
-  // Update matched_numbers JSON if any positions were filled
+  // Update matched_numbers JSON if any positions were filled (store compact array only)
   if (filledCount > 0) {
-    const updatedMatchedNumbers = JSON.stringify({
-      positions: positions,
-      completion_stats: {
-        total_positions: 10,
-        filled_positions: positions.filter(p => p.matched_numbers.length > 0).length,
-        completion_percentage: Math.round((positions.filter(p => p.matched_numbers.length > 0).length / 10) * 100)
-      }
-    });
+    const updatedMatchedNumbers = JSON.stringify(positionsArray);
 
     await client.query(`
       UPDATE lottery_matched_sets 
@@ -540,8 +562,20 @@ async function updateSetCompletion(client, setId) {
 /**
  * Automatically move complete set to default shelf
  */
-async function moveToShelfAutomatically(client, setId) {
+async function moveToShelfAutomatically(client, setId, tableAvailability = {}) {
   try {
+    const { hasShelfTable = true, hasShelfItemsTable = true } = tableAvailability;
+
+    if (!hasShelfTable || !hasShelfItemsTable) {
+      console.log(' Shelf tables missing, marking set as on_shelf without shelf entry');
+      await client.query(`
+        UPDATE lottery_matched_sets
+        SET status = 'on_shelf', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `, [setId]);
+      return;
+    }
+
     console.log(`🚀 Starting auto-move for set ${setId}...`);
 
     // Get default shelf (or first available shelf)
@@ -633,6 +667,15 @@ function createUniqueKey(lotteryNumber) {
   return `${lotteryNumber.year_number.slice(-2)}-${lotteryNumber.draw_sequence}-${lotteryNumber.set_number}-${lotteryNumber.six_digit_number}-${lotteryNumber.book_number}`;
 }
 
+async function tableExists(client, tableName) {
+  const result = await client.query(
+    "SELECT to_regclass($1) AS table_name",
+    [`public.${tableName}`]
+  );
+
+  return Boolean(result.rows?.[0]?.table_name);
+}
+
 /**
  * Process matching logic for lottery numbers against template (original function)
  */
@@ -664,7 +707,9 @@ async function processMatching(connection, template, lotteryArr, templateId) {
 
   // Helper to create unique key for lottery number
   const createUniqueKey = (lotteryNumber) => {
-    return `${lotteryNumber.year_number.slice(-2)}-${lotteryNumber.draw_sequence}-${lotteryNumber.set_number}-${lotteryNumber.six_digit_number}-${lotteryNumber.book_number}`;
+    const yearStr = String(lotteryNumber.year_number);
+    const yearLastTwo = yearStr.substring(yearStr.length - 2);
+    return `${yearLastTwo}-${lotteryNumber.draw_sequence}-${lotteryNumber.set_number}-${lotteryNumber.six_digit_number}-${lotteryNumber.book_number}`;
   };
 
   // Helper to count how many numbers available for a specific last-two-digits
@@ -736,8 +781,8 @@ async function processMatching(connection, template, lotteryArr, templateId) {
       if (picked) filledPositions++;
       matchedPositions.push({
         template_value: templateValue,
-        matched_numbers: picked ? [picked.six_digit_number] : [],
-        matched_lottery_object: picked || null,
+        matched_numbers: picked ? picked.six_digit_number : '',
+        unique_key: picked ? createUniqueKey(picked) : ''
       });
     }
 
@@ -747,14 +792,7 @@ async function processMatching(connection, template, lotteryArr, templateId) {
       template_id: templateId,
       vertical_row_index: bestCol,
       is_complete: isComplete,
-      matched_numbers: JSON.stringify({
-        positions: matchedPositions,
-        completion_stats: {
-          total_positions: 10,
-          filled_positions: filledPositions,
-          completion_percentage: Math.round((filledPositions / 10) * 100)
-        }
-      })
+      matched_numbers: JSON.stringify(matchedPositions)
     };
 
     // Insert set
@@ -774,16 +812,15 @@ async function processMatching(connection, template, lotteryArr, templateId) {
     // Insert matched numbers (only those actually used)
     for (let rowIndex = 0; rowIndex < matchedPositions.length; rowIndex++) {
       const position = matchedPositions[rowIndex];
-      if (!position.matched_lottery_object) continue;
-      
-      const lotteryObject = position.matched_lottery_object;
-      const lotteryNumber = lotteryObject.six_digit_number;
-      const lastTwoDigits = lotteryNumber.toString().slice(-2);
-      
+      if (!position.matched_numbers || position.matched_numbers === '') continue;
+
+      const lotteryNumber = position.matched_numbers;
+      const lastTwoDigits = template[bestCol][rowIndex];
+      const uniqueKey = position.unique_key;
+
       if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
         const client = await connection.connect();
         try {
-          const uniqueKey = createUniqueKey(lotteryObject);
           await client.query(`
             INSERT INTO lottery_matched_numbers (matched_set_id, lottery_number, last_two_digits, position_in_row, origin_number, is_active)
             VALUES ($1, $2, $3, $4, $5, $6)

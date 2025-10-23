@@ -31,7 +31,6 @@ export default function RootLayout({ children }) {
               <Link href="/lottery/numbers" className="whitespace-nowrap">Lottery Numbers</Link>
               <Link href="/lottery/matching" className="whitespace-nowrap">Lottery Matching</Link>
               <Link href="/lottery/matched-set" className="whitespace-nowrap">Matched Set</Link>
-              <Link href="/lottery/shelf" className="whitespace-nowrap">Shelf</Link>
               <Link href="/lottery-image-gen-test" className="whitespace-nowrap">Image Generator</Link>
             </div>
           </nav>

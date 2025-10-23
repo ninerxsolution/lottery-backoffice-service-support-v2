@@ -2,6 +2,82 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+const parseJsonSafe = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value);
+        } catch (error) {
+            console.warn('Failed to parse matched_numbers JSON', { value, error });
+            return null;
+        }
+    }
+    return value;
+};
+
+const normalizePosition = (position = {}, index = 0) => {
+    if (typeof position === 'string') {
+        const value = position.trim();
+        return {
+            templateValue: '',
+            matchedNumber: /^\d{6}$/.test(value) ? value : '',
+            uniqueKey: '',
+            index
+        };
+    }
+
+    const templateValue = position.template_value ?? position.last_two_digits ?? '';
+    const matchedSource = position.matched_numbers ?? position.matched_number ?? position.number ?? position.value ?? '';
+
+    let matchedNumber = '';
+    if (Array.isArray(matchedSource)) {
+        matchedNumber = matchedSource.find((num) => typeof num === 'string' && /^\d{6}$/.test(num.trim()))?.trim() || '';
+        if (!matchedNumber) {
+            matchedNumber = matchedSource.find((num) => typeof num === 'number')?.toString() ?? '';
+        }
+    } else if (typeof matchedSource === 'number') {
+        matchedNumber = matchedSource.toString();
+    } else if (typeof matchedSource === 'string') {
+        matchedNumber = matchedSource.trim();
+    }
+
+    if (matchedNumber && matchedNumber.length < 6) {
+        matchedNumber = matchedNumber.padStart(6, '0');
+    }
+
+    return {
+        templateValue,
+        matchedNumber: /^\d{6}$/.test(matchedNumber) ? matchedNumber : '',
+        uniqueKey: position.unique_key ?? position.origin_number ?? '',
+        index
+    };
+};
+
+const normalizeMatchedNumbers = (rawValue) => {
+    const parsed = parseJsonSafe(rawValue);
+
+    if (!parsed) return [];
+
+    if (Array.isArray(parsed)) {
+        return parsed.map((pos, index) => normalizePosition(pos, index));
+    }
+
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.positions)) {
+        return parsed.positions.map((pos, index) => normalizePosition(pos, index));
+    }
+
+    return [];
+};
+
+const extractSixDigitNumbers = (positions = []) => positions
+    .map((pos) => {
+        if (!pos || typeof pos !== 'object') return '';
+        const candidate = pos.matchedNumber ?? '';
+        const stringified = typeof candidate === 'number' ? candidate.toString() : candidate;
+        return /^\d{6}$/.test(stringified) ? stringified : '';
+    })
+    .filter(Boolean);
+
 export default function LotteryMatchedSetsPage() {
     const [matchedSets, setMatchedSets] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -72,21 +148,14 @@ export default function LotteryMatchedSetsPage() {
     const openModal = (setItem) => {
         setSelectedSet(setItem);
         setIsModalOpen(true);
-        // Initialize numbers from the set
-        try {
-            const data = typeof setItem?.matched_numbers === 'string' ? JSON.parse(setItem.matched_numbers) : setItem?.matched_numbers;
-            const nums = Array.isArray(data?.positions)
-                ? data.positions.filter(p => Array.isArray(p.matched_numbers) && p.matched_numbers.length > 0).flatMap(p => p.matched_numbers)
-                : [];
-            const sixOnly = nums.map(n => n?.toString?.() ?? '').filter(v => /^\d{6}$/.test(v));
-            setSelectedNumber(sixOnly[0] || '');
-            setStackNumbers(sixOnly.slice(0, 10));
-            setLayoutMode('single');
-            setPreviewError('');
-        } catch (e) {
-            setSelectedNumber('');
-            setStackNumbers([]);
-        }
+
+        const normalizedPositions = normalizeMatchedNumbers(setItem?.matched_numbers);
+        const sixDigitNumbers = extractSixDigitNumbers(normalizedPositions);
+
+        setSelectedNumber(sixDigitNumbers[0] || '');
+        setStackNumbers(sixDigitNumbers.slice(0, 10));
+        setLayoutMode('single');
+        setPreviewError('');
     };
 
     const closeModal = () => {
@@ -120,8 +189,26 @@ export default function LotteryMatchedSetsPage() {
     }, [isModalOpen, templateSrc]);
 
     const valuesForRender = useMemo(() => {
-        if (layoutMode === 'stack10') return stackNumbers.filter(v => /^\d{6}$/.test(v));
-        return /^\d{6}$/.test(selectedNumber) ? [selectedNumber] : [];
+        if (layoutMode === 'stack10') {
+            return stackNumbers
+                .map((value) => (typeof value === 'number' ? value.toString() : value))
+                .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                .map((value) => (value.length === 6 ? value : value.padStart(6, '0')))
+                .filter((value) => /^\d{6}$/.test(value));
+        }
+
+        if (typeof selectedNumber === 'number') {
+            const value = selectedNumber.toString();
+            return /^\d{6}$/.test(value) ? [value] : [];
+        }
+
+        if (typeof selectedNumber === 'string') {
+            const trimmed = selectedNumber.trim();
+            const padded = trimmed.length === 6 ? trimmed : trimmed.padStart(6, '0');
+            return /^\d{6}$/.test(padded) ? [padded] : [];
+        }
+
+        return [];
     }, [layoutMode, selectedNumber, stackNumbers]);
 
     const renderCanvas = useCallback(() => {
@@ -182,10 +269,7 @@ export default function LotteryMatchedSetsPage() {
         renderCanvas();
     }, [isModalOpen, renderCanvas, layoutMode, selectedNumber, stackNumbers]);
 
-    const isValid = useMemo(() => {
-        if (layoutMode === 'stack10') return valuesForRender.length > 0 && valuesForRender.every(v => /^\d{6}$/.test(v));
-        return /^\d{6}$/.test(selectedNumber);
-    }, [layoutMode, selectedNumber, valuesForRender]);
+    const isValid = useMemo(() => valuesForRender.length > 0 && valuesForRender.every((value) => /^\d{6}$/.test(value)), [valuesForRender]);
 
     const onDownload = () => {
         const canvas = canvasRef.current;
@@ -300,14 +384,8 @@ export default function LotteryMatchedSetsPage() {
                     ) : (
                         <div className="space-y-4">
                             {matchedSets.map((set) => {
-                                const matchedNumbersData = typeof set.matched_numbers === 'string'
-                                    ? JSON.parse(set.matched_numbers)
-                                    : set.matched_numbers;
-                                const allNumbers = Array.isArray(matchedNumbersData?.positions)
-                                    ? matchedNumbersData.positions
-                                        .filter((p) => Array.isArray(p.matched_numbers) && p.matched_numbers.length > 0)
-                                        .flatMap((p) => p.matched_numbers)
-                                    : [];
+                                const normalizedPositions = normalizeMatchedNumbers(set.matched_numbers);
+                                const allNumbers = extractSixDigitNumbers(normalizedPositions);
                                 const completionPercentage = Math.round((Number(set.matched_count || 0) / 10) * 100);
                                 const isComplete = set.is_complete ?? completionPercentage === 100;
 
@@ -334,7 +412,7 @@ export default function LotteryMatchedSetsPage() {
                                                 ) : (
                                                     allNumbers.map((num, idx) => (
                                                         <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                                                            {typeof num === 'object' ? JSON.stringify(num) : num.toString()}
+                                                            {num}
                                                         </span>
                                                     ))
                                                 )}
