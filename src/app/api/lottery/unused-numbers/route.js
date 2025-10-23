@@ -30,6 +30,7 @@ export async function GET() {
         const matchedNumbersResult = await client.query(`
           SELECT lmn.lottery_number, lmn.origin_number
           FROM lottery_matched_numbers lmn
+          WHERE lmn.is_active = true
         `);
         
          // Combine lottery numbers with unique key

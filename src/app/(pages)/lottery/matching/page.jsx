@@ -16,6 +16,7 @@ export default function LotteryMatchingPage() {
     });
     const [unusedNumbers, setUnusedNumbers] = useState([]);
     const [unusedCount, setUnusedCount] = useState(0);
+    const [successMessage, setSuccessMessage] = useState(null);
 
 
     useEffect(() => {
@@ -110,7 +111,11 @@ export default function LotteryMatchingPage() {
         try {
             setIsProcessing(true);
             setError(null);
+            setSuccessMessage(null);
 
+            // ตรวจสอบว่ามี sets อยู่แล้วหรือไม่
+            const hasExistingSets = matchedSets.length > 0;
+            
             const response = await fetch('/api/lottery/matching', {
                 method: 'POST',
                 headers: {
@@ -118,33 +123,26 @@ export default function LotteryMatchingPage() {
                 },
                 body: JSON.stringify({
                     templateId: selectedTemplate,
-                    lotteryNumbers: lotteryNumbers
+                    lotteryNumbers: hasExistingSets ? [] : lotteryNumbers
                 })
             });
 
-            // lotteryNumbers :
-            // [
-            //     {
-            //       year_number: '2568',
-            //       draw_sequence: '66',
-            //       set_number: '14',
-            //       six_digit_number: '002706',
-            //       book_number: '9408'
-            //     },
-            //     {
-            //       year_number: '2568',
-            //       draw_sequence: '66',
-            //       set_number: '09',
-            //       six_digit_number: '007508',
-            //       book_number: '8956'
-            //     },
-            
             const result = await response.json();
 
             if (!response.ok) {
                 throw new Error(result.message || 'Failed to process matching');
             }
 
+            // Show success message with incremental matching results
+            if (result.data) {
+                const { setsUpdated, setsCreated, unusedRemaining } = result.data;
+                setSuccessMessage(`
+                    Incremental matching completed successfully!
+                    • Updated existing sets: ${setsUpdated}
+                    • Created new sets: ${setsCreated}
+                    • Unused numbers remaining: ${unusedRemaining}
+                `);
+            }
 
             // Reload matched sets to get the latest data (this will also load unused numbers)
             await loadMatchedSets();
@@ -162,6 +160,38 @@ export default function LotteryMatchingPage() {
             ...prev,
             [filterType]: value === '' ? null : value
         }));
+    };
+
+    const handleMoveCompleteSetsToShelf = async () => {
+        try {
+            setIsProcessing(true);
+            setError(null);
+            setSuccessMessage(null);
+
+            const response = await fetch('/api/lottery/matching', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || 'Failed to move complete sets to shelf');
+            }
+
+            setSuccessMessage(`Successfully moved ${result.data.movedCount} complete sets to shelf!`);
+            
+            // Reload data
+            await loadMatchedSets();
+
+        } catch (err) {
+            setError(err.message || 'Failed to move complete sets to shelf');
+            console.error('Error moving complete sets to shelf:', err);
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleReset = async () => {
@@ -263,6 +293,18 @@ export default function LotteryMatchingPage() {
                         </p>
                     </div>
 
+                    {/* Success Message */}
+                    {successMessage && (
+                        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <div className="flex items-center">
+                                <svg className="h-5 w-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <div className="text-green-800 whitespace-pre-line">{successMessage}</div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Process Button */}
                     <div className="flex justify-center mb-6 gap-3">
                         <button
@@ -282,6 +324,15 @@ export default function LotteryMatchingPage() {
                                 'Process Matching'
                             )}
                         </button>
+                        
+                        <button
+                            onClick={handleMoveCompleteSetsToShelf}
+                            disabled={isProcessing}
+                            className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Move Complete Sets to Shelf
+                        </button>
+                        
                         <button
                             onClick={handleReset}
                             disabled={isProcessing}
@@ -292,26 +343,32 @@ export default function LotteryMatchingPage() {
                     </div>
 
                     {/* Statistics */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-blue-900">{lotteryNumbers.length}</div>
                             <div className="text-blue-700">Total Lottery Numbers</div>
                         </div>
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-green-900">
-                                {matchedSets.filter(set => set.is_complete).length}
+                                {matchedSets.filter(set => set.is_complete && set.display_status === 'on_shelf').length}
                             </div>
-                            <div className="text-green-700">Complete Rows</div>
+                            <div className="text-green-700">On Shelf</div>
                         </div>
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
                             <div className="text-2xl font-bold text-yellow-900">
-                                {matchedSets.filter(set => !set.is_complete).length}
+                                {matchedSets.filter(set => set.is_complete && set.display_status !== 'on_shelf').length}
                             </div>
-                            <div className="text-yellow-700">Incomplete Rows</div>
+                            <div className="text-yellow-700">Complete (Processing)</div>
                         </div>
                         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
-                            <div className="text-2xl font-bold text-orange-900">{unusedCount}</div>
-                            <div className="text-orange-700">Unused Numbers</div>
+                            <div className="text-2xl font-bold text-orange-900">
+                                {matchedSets.filter(set => !set.is_complete).length}
+                            </div>
+                            <div className="text-orange-700">Incomplete Rows</div>
+                        </div>
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                            <div className="text-2xl font-bold text-red-900">{unusedCount}</div>
+                            <div className="text-red-700">Unused Numbers</div>
                         </div>
                     </div>
 
@@ -427,6 +484,11 @@ export default function LotteryMatchingPage() {
                                                 <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${getCompletionColor(completionPercentage)}`}>
                                                     {getCompletionText(completionPercentage)}
                                                 </span>
+                                                {set.display_status === 'on_shelf' && (
+                                                    <span className="px-3 py-1 rounded-full text-sm font-medium text-white bg-purple-500">
+                                                        On Shelf
+                                                    </span>
+                                                )}
                                                 <span className="text-sm text-gray-600">
                                                     {set.matched_count}/10 positions
                                                 </span>

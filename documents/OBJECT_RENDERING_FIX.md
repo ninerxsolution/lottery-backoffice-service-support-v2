@@ -102,15 +102,15 @@ Updated the grid rendering to handle both formats and create proper unique keys:
 ## Impact Assessment
 
 ### Positive Impacts
-- ✅ Fixes the `[object Object]` display issue
-- ✅ Maintains backward compatibility
-- ✅ Proper unique key generation for React rendering
-- ✅ Enhanced data handling capabilities
+-  Fixes the `[object Object]` display issue
+-  Maintains backward compatibility
+-  Proper unique key generation for React rendering
+-  Enhanced data handling capabilities
 
 ### No Negative Impacts
-- ✅ No breaking changes to existing functionality
-- ✅ No performance degradation
-- ✅ No additional dependencies required
+-  No breaking changes to existing functionality
+-  No performance degradation
+-  No additional dependencies required
 
 ## Related Changes
 

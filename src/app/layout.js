@@ -26,12 +26,12 @@ export default function RootLayout({ children }) {
         <header className="sticky top-0 z-50 bg-white/80 backdrop-blur border-b">
           <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex h-14 items-center gap-4 overflow-x-auto">
-              <Link href="/" className="font-semibold whitespace-nowrap">Home</Link>
-              <Link href="/database-test" className="whitespace-nowrap">Database Test</Link>
+              <Link href="/" className="font-semibold whitespace-nowrap">/</Link>
               <Link href="/lottery/template" className="whitespace-nowrap">Lottery Template</Link>
               <Link href="/lottery/numbers" className="whitespace-nowrap">Lottery Numbers</Link>
               <Link href="/lottery/matching" className="whitespace-nowrap">Lottery Matching</Link>
               <Link href="/lottery/matched-set" className="whitespace-nowrap">Matched Set</Link>
+              <Link href="/lottery/shelf" className="whitespace-nowrap">Shelf</Link>
               <Link href="/lottery-image-gen-test" className="whitespace-nowrap">Image Generator</Link>
             </div>
           </nav>

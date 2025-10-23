@@ -207,16 +207,7 @@ export default function LotteryTemplatePage() {
                         <p className="text-gray-600">
                             10x10 Grid Template from lottery_templates table
                         </p>
-                        {saveError && (
-                            <div className="mt-4 inline-block bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
-                                {saveError}
-                            </div>
-                        )}
-                        {saveOk && !saveError && (
-                            <div className="mt-4 inline-block bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded">
-                                Saved
-                            </div>
-                        )}
+                        
                     </div>
 
                     {/* Template Grid */}
@@ -251,6 +242,19 @@ export default function LotteryTemplatePage() {
                             </div>
                         </div>
                     )}
+
+                    <div className="text-center">
+                    {saveError && (
+                            <div className="mt-4 inline-block bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+                                {saveError}
+                            </div>
+                        )}
+                        {saveOk && !saveError && (
+                            <div className="mt-4 inline-block bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded">
+                                Saved
+                            </div>
+                        )}
+                    </div>
 
                     {/* Template Information */}
                     <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">

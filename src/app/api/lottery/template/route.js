@@ -77,8 +77,10 @@ export async function PUT(request) {
       const client = await connection.connect();
       try {
         await client.query('BEGIN');
-        await client.query('DELETE FROM lottery_templates');
-        await client.query('INSERT INTO lottery_templates (columns) VALUES ($1::jsonb)', [JSON.stringify(columns)]);
+        
+        // UPDATE existing record instead of DELETE + INSERT
+        await client.query('UPDATE lottery_templates SET columns = $1::jsonb WHERE shop_id = $2', [JSON.stringify(columns), '49']);
+        
         await client.query('COMMIT');
       } catch (e) {
         await client.query('ROLLBACK');
@@ -88,7 +90,6 @@ export async function PUT(request) {
         await connection.end();
       }
       return Response.json({ success: true });
-
     }
 
   } catch (error) {
