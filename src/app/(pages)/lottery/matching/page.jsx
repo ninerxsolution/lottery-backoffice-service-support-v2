@@ -116,6 +116,22 @@ export default function LotteryMatchingPage() {
             // ตรวจสอบว่ามี sets อยู่แล้วหรือไม่
             const hasExistingSets = matchedSets.length > 0;
             
+            // สร้าง group criteria จาก lottery numbers (ใช้ค่าจากตัวแรก)
+            const groupCriteria = lotteryNumbers.length > 0 ? {
+                lottery_draw_id: lotteryNumbers[0].lottery_draw_id ?? 0,
+                branch_id: lotteryNumbers[0].branch_id ?? 0,
+                ticket_count: lotteryNumbers[0].ticket_count ?? 0,
+                group_type: lotteryNumbers[0].group_type ?? 'row'
+            } : {
+                lottery_draw_id: 0,
+                branch_id: 0,
+                ticket_count: 0,
+                group_type: 'row'
+            };
+
+            console.log('Group criteria:', groupCriteria);
+            console.log('First lottery number:', lotteryNumbers[0]);
+
             const response = await fetch('/api/lottery/matching', {
                 method: 'POST',
                 headers: {
@@ -123,7 +139,8 @@ export default function LotteryMatchingPage() {
                 },
                 body: JSON.stringify({
                     templateId: selectedTemplate,
-                    lotteryNumbers: hasExistingSets ? [] : lotteryNumbers
+                    lotteryNumbers: hasExistingSets ? [] : lotteryNumbers,
+                    groupCriteria: groupCriteria
                 })
             });
 

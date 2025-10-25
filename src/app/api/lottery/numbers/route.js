@@ -15,13 +15,23 @@ export async function GET() {
 
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
-      const result = await client.query('SELECT year_number, draw_sequence, set_number, six_digit_number, book_number FROM lottery_numbers ORDER BY six_digit_number');
+      const result = await client.query('SELECT year_number, draw_sequence, set_number, six_digit_number, book_number, lottery_draw_id, branch_id, ticket_count, group_type FROM lottery_numbers ORDER BY six_digit_number');
       client.release();
       await connection.end();
 
       return Response.json({
         success: true,
-        data: result.rows.map(r => ({ year_number: r.year_number, draw_sequence: r.draw_sequence, set_number: r.set_number, six_digit_number: r.six_digit_number, book_number: r.book_number }))
+        data: result.rows.map(r => ({ 
+          year_number: r.year_number, 
+          draw_sequence: r.draw_sequence, 
+          set_number: r.set_number, 
+          six_digit_number: r.six_digit_number, 
+          book_number: r.book_number,
+          lottery_draw_id: r.lottery_draw_id,
+          branch_id: r.branch_id,
+          ticket_count: r.ticket_count,
+          group_type: r.group_type
+        }))
       });
 
     }

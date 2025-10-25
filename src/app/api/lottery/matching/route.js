@@ -141,7 +141,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { templateId = 1, lotteryNumbers } = body;
+    const { templateId = 1, lotteryNumbers, groupCriteria = null } = body;
 
     if (!lotteryNumbers || !Array.isArray(lotteryNumbers)) {
       return Response.json({
@@ -149,6 +149,16 @@ export async function POST(request) {
         message: 'lotteryNumbers array is required'
       }, { status: 400 });
     }
+
+    // สร้าง group criteria ที่ยืดหยุ่น (ใช้ default values ถ้าไม่มี)
+    const finalGroupCriteria = {
+      lottery_draw_id: groupCriteria?.lottery_draw_id ?? 0,
+      branch_id: groupCriteria?.branch_id ?? 0,
+      ticket_count: groupCriteria?.ticket_count ?? 0,
+      group_type: groupCriteria?.group_type ?? 'row'
+    };
+
+    console.log('Final group criteria:', finalGroupCriteria);
 
     const connection = createConnection(connectionString);
 
@@ -179,7 +189,7 @@ export async function POST(request) {
 
       const lotteryArr = lotteryNumbers;
 
-      const processedResults = await processIncrementalMatching(connection, templateGrid, lotteryArr, templateId);
+      const processedResults = await processIncrementalMatching(connection, templateGrid, lotteryArr, templateId, finalGroupCriteria);
       await connection.end();
 
       return Response.json({
@@ -314,13 +324,26 @@ export async function DELETE() {
 /**
  * Process incremental matching logic for lottery numbers against template
  * Fills incomplete sets first, then creates new sets from remaining numbers
+ * @param {Object} connection - Database connection
+ * @param {Array} template - Template grid
+ * @param {Array} newNumbers - New lottery numbers to process
+ * @param {Number} templateId - Template ID
+ * @param {Object} groupCriteria - Group criteria for matching
  */
-async function processIncrementalMatching(connection, template, newNumbers, templateId) {
+async function processIncrementalMatching(connection, template, newNumbers, templateId, groupCriteria = null) {
   const connectionString = process.env.DATABASE_URL;
   const results = {
     setsUpdated: 0,
     setsCreated: 0,
     unusedRemaining: 0
+  };
+
+  // สร้าง group criteria ที่ยืดหยุ่น (ใช้ default values ถ้าไม่มี)
+  const finalGroupCriteria = {
+    lottery_draw_id: groupCriteria?.lottery_draw_id ?? 0,
+    branch_id: groupCriteria?.branch_id ?? 0,
+    ticket_count: groupCriteria?.ticket_count ?? 0,
+    group_type: groupCriteria?.group_type ?? 'row'
   };
 
   if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
@@ -343,14 +366,25 @@ async function processIncrementalMatching(connection, template, newNumbers, temp
         ORDER BY matched_count DESC, lms.created_at ASC
       `);
 
-      // 2. Get unused numbers from database
-      const unusedNumbers = await getUnusedNumbers(client);
+      // 2. Get unused numbers from database with group criteria
+      const unusedNumbers = await getUnusedNumbers(client, finalGroupCriteria);
 
-      // 3. Combine unused + newNumbers (แต่ filter duplicates)
+      // 3. Combine unused + newNumbers (แต่ filter duplicates และ group criteria)
       const allAvailableNumbers = [...unusedNumbers];
 
-      // เพิ่ม newNumbers เฉพาะที่ยังไม่ได้ใช้
+      // เพิ่ม newNumbers เฉพาะที่ยังไม่ได้ใช้และตรงกับ group criteria
       for (const newNum of newNumbers) {
+        // ตรวจสอบ group criteria (ใช้ default values)
+        const numDrawId = newNum.lottery_draw_id ?? 0;
+        const numBranchId = newNum.branch_id ?? 0;
+        const numTicketCount = newNum.ticket_count ?? 0;
+        const numGroupType = newNum.group_type ?? 'row';
+        
+        if (numDrawId !== finalGroupCriteria.lottery_draw_id) continue;
+        if (numBranchId !== finalGroupCriteria.branch_id) continue;
+        if (numTicketCount !== finalGroupCriteria.ticket_count) continue;
+        if (numGroupType !== finalGroupCriteria.group_type) continue;
+
         const yearStr = newNum.year_number.toString();
         const yearLastTwo = yearStr.substring(yearStr.length - 2);
         const uniqueKey = `${yearLastTwo}-${newNum.draw_sequence}-${newNum.set_number}-${newNum.six_digit_number}-${newNum.book_number}`;
@@ -379,7 +413,7 @@ async function processIncrementalMatching(connection, template, newNumbers, temp
       // 5. Create new sets from remaining numbers
       const remainingNumbers = allAvailableNumbers.filter(num => !num.used);
       if (remainingNumbers.length > 0) {
-        const newSetsResult = await processMatching(connection, template, remainingNumbers, templateId);
+        const newSetsResult = await processMatching(connection, template, remainingNumbers, templateId, finalGroupCriteria);
         results.setsCreated = newSetsResult.matched_sets.length;
         results.unusedRemaining = newSetsResult.unused_numbers.length;
       } else {
@@ -396,12 +430,50 @@ async function processIncrementalMatching(connection, template, newNumbers, temp
 
 /**
  * Get unused numbers from lottery_numbers that are not in lottery_matched_numbers
+ * @param {Object} client - Database client
+ * @param {Object} groupCriteria - Criteria for grouping (lottery_draw_id, branch_id, ticket_count, group_type)
  */
-async function getUnusedNumbers(client) {
-  const lotteryNumbersResult = await client.query(`
-    SELECT ln.year_number, ln.draw_sequence, ln.set_number, ln.six_digit_number, ln.book_number
+async function getUnusedNumbers(client, groupCriteria = null) {
+  let query = `
+    SELECT ln.year_number, ln.draw_sequence, ln.set_number, ln.six_digit_number, ln.book_number,
+           ln.lottery_draw_id, ln.branch_id, ln.ticket_count, ln.group_type
     FROM lottery_numbers ln
-  `);
+  `;
+  
+  const params = [];
+  const conditions = [];
+  
+  // เพิ่มเงื่อนไขการกรองตาม group criteria
+  if (groupCriteria) {
+    if (groupCriteria.lottery_draw_id !== undefined && groupCriteria.lottery_draw_id !== null) {
+      conditions.push(`ln.lottery_draw_id = $${params.length + 1}`);
+      params.push(groupCriteria.lottery_draw_id);
+    }
+    if (groupCriteria.branch_id !== undefined && groupCriteria.branch_id !== null) {
+      conditions.push(`ln.branch_id = $${params.length + 1}`);
+      params.push(groupCriteria.branch_id);
+    }
+    if (groupCriteria.ticket_count !== undefined && groupCriteria.ticket_count !== null) {
+      conditions.push(`ln.ticket_count = $${params.length + 1}`);
+      params.push(groupCriteria.ticket_count);
+    }
+    if (groupCriteria.group_type !== undefined && groupCriteria.group_type !== null) {
+      conditions.push(`ln.group_type = $${params.length + 1}`);
+      params.push(groupCriteria.group_type);
+    }
+  }
+  
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  
+  const lotteryNumbersResult = await client.query(query, params);
+  
+  // Debug: ดูข้อมูลที่ได้จาก database
+  if (lotteryNumbersResult.rows.length > 0) {
+    console.log('Sample lottery numbers from database:', lotteryNumbersResult.rows.slice(0, 3));
+    console.log('Group criteria used:', groupCriteria);
+  }
 
   const matchedNumbersResult = await client.query(`
     SELECT lmn.origin_number
@@ -678,10 +750,23 @@ async function tableExists(client, tableName) {
 
 /**
  * Process matching logic for lottery numbers against template (original function)
+ * @param {Object} connection - Database connection
+ * @param {Array} template - Template grid
+ * @param {Array} lotteryArr - Lottery numbers to process
+ * @param {Number} templateId - Template ID
+ * @param {Object} groupCriteria - Group criteria for matching
  */
-async function processMatching(connection, template, lotteryArr, templateId) {
+async function processMatching(connection, template, lotteryArr, templateId, groupCriteria = null) {
   const connectionString = process.env.DATABASE_URL;
   const results = [];
+
+  // สร้าง group criteria ที่ยืดหยุ่น (ใช้ default values ถ้าไม่มี)
+  const finalGroupCriteria = {
+    lottery_draw_id: groupCriteria?.lottery_draw_id ?? 0,
+    branch_id: groupCriteria?.branch_id ?? 0,
+    ticket_count: groupCriteria?.ticket_count ?? 0,
+    group_type: groupCriteria?.group_type ?? 'row'
+  };
 
   // lotteryArr
   // [
@@ -792,7 +877,10 @@ async function processMatching(connection, template, lotteryArr, templateId) {
       template_id: templateId,
       vertical_row_index: bestCol,
       is_complete: isComplete,
-      matched_numbers: JSON.stringify(matchedPositions)
+      matched_numbers: JSON.stringify(matchedPositions),
+      lottery_draw_id: finalGroupCriteria.lottery_draw_id,
+      branch_id: finalGroupCriteria.branch_id,
+      ticket_count: finalGroupCriteria.ticket_count
     };
 
     // Insert set
@@ -800,10 +888,21 @@ async function processMatching(connection, template, lotteryArr, templateId) {
     if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
       const client = await connection.connect();
       insertResult = await client.query(`
-        INSERT INTO lottery_matched_sets (template_id, vertical_row_index, is_complete, matched_numbers, status, is_active)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO lottery_matched_sets (template_id, vertical_row_index, is_complete, matched_numbers, 
+                                         lottery_draw_id, branch_id, ticket_count, status, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
-      `, [matchedSetData.template_id, matchedSetData.vertical_row_index, matchedSetData.is_complete, matchedSetData.matched_numbers, 'processing', true]);
+      `, [
+        matchedSetData.template_id, 
+        matchedSetData.vertical_row_index, 
+        matchedSetData.is_complete, 
+        matchedSetData.matched_numbers,
+        matchedSetData.lottery_draw_id,
+        matchedSetData.branch_id,
+        matchedSetData.ticket_count,
+        'processing', 
+        true
+      ]);
       client.release();
     }
 
